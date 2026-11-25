@@ -11,7 +11,7 @@ EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples" / "quickstart
 
 class TestPhase12Release(unittest.IsolatedAsyncioTestCase):
     def test_version_is_1_0_0_and_examples_parse(self) -> None:
-        self.assertEqual(shirdal.__version__, "1.0.0")
+        self.assertEqual(shirdal.__version__, "1.0.1")
         for py_file in EXAMPLES_DIR.rglob("*.py"):
             ast.parse(py_file.read_text(encoding="utf-8"))
 
@@ -40,7 +40,7 @@ class TestPhase12Release(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0.08)
 
         edited_texts = [m.text for m in raw.edited_messages]
-        self.assertIn("🏓 Pong! Shirdal v1.0.0", edited_texts)
+        self.assertIn(f"🏓 Pong! Shirdal v{shirdal.__version__}", edited_texts)
         self.assertTrue(any(t.startswith("📊 Requests:") for t in edited_texts))
 
         await bot.stop()

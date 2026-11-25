@@ -1,4 +1,4 @@
-from shirdal.client import SelfBot
+from shirdal.client import SelfBot, Shirdal
 from shirdal.core.adapter import (
     AdapterError,
     DeviceProfile,
@@ -14,11 +14,38 @@ from shirdal.core.events import (
     UpdateEvent,
     UserRef,
 )
+from shirdal.core.botapi_adapter import (
+    BotAPIAdapter,
+    ButtonStyle,
+    WebhookServer,
+    button,
+    custom_emoji,
+    custom_emoji_entity,
+    date_time,
+    date_time_entity,
+    inline_keyboard,
+    reply_button,
+    reply_keyboard,
+    rich_blockquote,
+    rich_buttons,
+    rich_code,
+    rich_details,
+    rich_divider,
+    rich_footer,
+    rich_heading,
+    rich_math,
+    rich_message,
+    rich_paragraph,
+    rich_table,
+    rich_thinking,
+)
 from shirdal.core.hydrogram_adapter import HydrogramAdapter
 from shirdal.core.mock_adapter import MockAdapter
 from shirdal.core.telethon_adapter import TelethonAdapter
 from shirdal.engine import (
     Context,
+    DraftStream,
+    RichDraftStream,
     Dispatcher,
     Filter,
     FSMContext,
@@ -31,6 +58,7 @@ from shirdal.engine import (
     StatesGroup,
     TransferProgress,
     TransferQueue,
+    callback,
     command,
     group,
     incoming,
@@ -60,6 +88,7 @@ from shirdal.storage import (
 )
 
 __all__ = [
+    "Shirdal",
     "SelfBot",
     "MultiBot",
     "TransportAdapter",
@@ -75,8 +104,33 @@ __all__ = [
     "UpdateEvent",
     "MockAdapter",
     "TelethonAdapter",
+    "BotAPIAdapter",
+    "WebhookServer",
+    "ButtonStyle",
+    "button",
+    "inline_keyboard",
+    "reply_button",
+    "reply_keyboard",
+    "custom_emoji",
+    "custom_emoji_entity",
+    "date_time",
+    "date_time_entity",
+    "rich_blockquote",
+    "rich_buttons",
+    "rich_code",
+    "rich_details",
+    "rich_divider",
+    "rich_footer",
+    "rich_heading",
+    "rich_math",
+    "rich_message",
+    "rich_paragraph",
+    "rich_table",
+    "rich_thinking",
     "HydrogramAdapter",
     "Context",
+    "DraftStream",
+    "RichDraftStream",
     "Dispatcher",
     "Filter",
     "State",
@@ -89,6 +143,7 @@ __all__ = [
     "ProgressTracker",
     "TransferProgress",
     "TransferQueue",
+    "callback",
     "command",
     "text",
     "outgoing",
@@ -112,4 +167,4 @@ __all__ = [
     "SecretBox",
     "CachedChat",
 ]
-__version__ = "1.0.0"
+__version__ = "1.0.1"

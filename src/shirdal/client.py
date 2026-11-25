@@ -16,8 +16,8 @@ from shirdal.guard.middleware import Middleware
 from shirdal.plugins.loader import PluginManager
 
 
-class SelfBot:
-    """Main entry point for a shirdal self-bot instance."""
+class Shirdal:
+    """Main entry point for a shirdal Telegram bot or MTProto client."""
 
     def __init__(
         self,
@@ -67,6 +67,12 @@ class SelfBot:
             )
 
         return decorator
+
+    def on_callback(
+        self,
+        filter_obj: Filter | None = None,
+    ) -> Callable[[ContextHandler], ContextHandler]:
+        return self.on(filter_obj, event_type=EventType.CALLBACK_QUERY)
 
     def on_edit(
         self, filter_obj: Filter | None = None
@@ -154,3 +160,6 @@ class SelfBot:
             except ImportError:
                 pass
         asyncio.run(self.serve())
+
+
+SelfBot = Shirdal

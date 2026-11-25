@@ -27,6 +27,7 @@ class TelethonAdapter:
         *,
         device: DeviceProfile | None = None,
         session_string: str | None = None,
+        bot_token: str | None = None,
     ) -> None:
         try:
             from telethon import TelegramClient, events  # type: ignore[import-not-found]
@@ -42,6 +43,7 @@ class TelethonAdapter:
         )
 
         self._events = events
+        self._bot_token = bot_token
         self._client = TelegramClient(
             session,
             api_id,
@@ -90,7 +92,10 @@ class TelethonAdapter:
         return self._connected and self._client.is_connected()
 
     async def connect(self) -> None:
-        await self._client.start()
+        if self._bot_token is not None:
+            await self._client.start(bot_token=self._bot_token)
+        else:
+            await self._client.start()
         self._connected = True
 
     async def disconnect(self) -> None:

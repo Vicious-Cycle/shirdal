@@ -2,41 +2,46 @@
 
 # Shirdal (شیر‌دال)
 
-**فریم‌ورک سریع، تمیز و Context-First پایتون برای ساخت سلف‌بات‌های تلگرام**
+**فریم‌ورک سریع و Context-First پایتون برای Bot API تلگرام و کلاینت‌های MTProto**
 
 [English](README.md) | **فارسی**
 
 </div>
 
-## ویژگی‌های کلیدی
+<div dir="rtl">
 
-- **هسته آداپتور (`TransportAdapter`):** مستقل از موتور MTProto زیرین، همراه با `TelethonAdapter`، `HydrogramAdapter`، پروفایل دستگاه تمیز (`DeviceProfile`)، پشتیبانی از `StringSession` و `MockAdapter` برای تست بدون نیاز به اکانت.
-- **رابط تمیز `Context`:** متدهای `ctx.reply()`، `ctx.edit()`، `ctx.reply_media()`، `ctx.reply_album()`، `ctx.download()`، `ctx.react()`، `ctx.pin()`، `ctx.ban()`، `ctx.mute()`، `ctx.kick()`، `ctx.get_chat()`، `auto_delete` غیرمسدودکننده و `async with ctx.typing():`.
-- **فیلترهای ترکیبی:** ترکیب `command`، `regex`، `state`، `outgoing`، `incoming`، `private`، `group`، `reply` و `text` با عملگرهای `&`، `|` و `~`.
-- **محافظ ضدبلاک (`AntiFloodAdapter`):** فاصله‌گذاری خودکار به ازای هر چت، کنترل هم‌زمانی و بازیابی هوشمند `FloodWaitError`.
-- **پلاگین‌های `Hot-Reload`:** بارگذاری و به‌روزرسانی زنده ماژول‌های `plugins/` بدون قطع اتصال اکانت.
-- **میدل‌ور و ماشین وضعیت (`FSM`):** پایپ‌لاین `@bot.use`، مدیریت خطای سراسری `@bot.on_error` و `StatesGroup`.
-- **ذخیره‌سازی و رمزنگاری:** `SQLiteStorage` (حالت `WAL` بهینه + کش L1)، `RedisStorage`، `MySQLStorage` و `EncryptedStorage`.
-- **اجرای چنداکانتی و زمان‌بند:** مدیریت هم‌زمان اکانت‌ها با `MultiBot` و اجرای دوره‌ای با `@bot.every(...)`.
-- **بهینه برای آپلودرها:** `ProgressTracker` ضداسپم و `TransferQueue` برای کنترل صف آپلود و دانلود.
-- **ابزار خط فرمان (`CLI`):** دستورات `shirdal new`، `shirdal doctor` و `shirdal run`.
+شیر‌دال منطق ربات را از لایهٔ ارتباطی جدا می‌کند. هندلرها، فیلترها، ماشین وضعیت (FSM) و پلاگین‌ها را یک بار بنویسید و روی `BotAPIAdapter` (بدون وابستگی خارجی، با Polling یا `WebhookServer` داخلی)، `TelethonAdapter`، `HydrogramAdapter` یا `MockAdapter` اجرا کنید.
 
-## نصب
+## قابلیت‌های اصلی
+
+- **آداپتور Bot API بدون وابستگی (`BotAPIAdapter`):** کلاینت HTTP/HTTPS با Keep-Alive، پشتیبانی اختیاری از `msgspec` و سرور `WebhookServer` داخلی بر پایهٔ `asyncio` (بدون نیاز به FastAPI).
+- **پشتیبانی از Bot API جدید (9.4 تا 10.5):** دکمه‌های رنگی (`primary`، `success`، `danger`)، آیکون و متن ایموجی پرمیوم (`icon` و `custom_emoji()`)، دکمهٔ غیرفعال (`disabled`)، زمان محلی (`date_time()`)، پاسخ مخفی در گروه (`ctx.reply_ephemeral()`)، استریم زندهٔ متن (`ctx.stream()`)، پیام‌های ساختاریافتهٔ `Rich Messages` (`ctx.reply_rich()` و `ctx.stream_rich()`)، تگ اعضا (`ctx.set_member_tag()`)، تاپیک در پیوی و `set_my_settings()`.
+- **آداپتورهای MTProto:** پشتیبانی از `TelethonAdapter` و `HydrogramAdapter` (با فالبک Pyrogram)، `DeviceProfile` و `bot_token`.
+- **رابط `Context` و فیلترهای ترکیبی:** متدهای `ctx.reply()`، `ctx.edit()`، `ctx.answer()`، `ctx.reply_media()`، `ctx.download()`، `ctx.react()`، `ctx.pin()` و فیلترهای `command`، `regex`، `callback`، `state`، `private`، `group` با عملگرهای `&`، `|` و `~`.
+- **ابزارهای محیط واقعی:** `AntiFloodAdapter` با بازیابی خودکار `FloodWaitError`، پلاگین‌های Hot-Reload، میدل‌ورها، `SQLiteStorage` (حالت WAL + کش L1)، `RedisStorage`، `MySQLStorage`، `EncryptedStorage`، `MultiBot` و `@bot.every()`.
+
+## نصب و شروع سریع
 
 ```bash
 pip install shirdal
-# همراه با Telethon و uvloop:
+# یا همراه با Telethon و uvloop:
 pip install "shirdal[telethon,fast]"
 ```
 
-## شروع سریع
-
 ```bash
-shirdal new my_selfbot --adapter telethon
-cd my_selfbot
+shirdal new my_bot --adapter botapi
+cd my_bot
 shirdal doctor
 shirdal run main.py
 ```
+
+## مستندات
+
+- [راهنمای کامل فارسی](docs/fa/README.md)
+- [شروع سریع و CLI](docs/getting-started.md)
+- [قابلیت‌های Bot API (دکمه رنگی، ایموجی پرمیوم، Ephemeral و استریم)](docs/bot-api.md)
+- [راهنمای Rich Messages](docs/rich-messages.md)
+- [سرور Webhook و استقرار](docs/webhook-and-deployment.md)
 
 ## اجرای تست‌ها
 
@@ -47,3 +52,5 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 ## لایسنس
 
 منتشرشده تحت لایسنس [LGPL-3.0-or-later](LICENSE).
+
+</div>

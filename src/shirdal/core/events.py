@@ -10,6 +10,7 @@ class EventType(StrEnum):
     NEW_MESSAGE = "new_message"
     EDIT_MESSAGE = "edit_message"
     DELETE_MESSAGE = "delete_message"
+    CALLBACK_QUERY = "callback_query"
     RAW = "raw"
 
 
@@ -56,6 +57,8 @@ class MessageEvent:
     reply_to_id: int | None = None
     is_outgoing: bool = False
     date: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    callback_id: str | None = None
+    callback_data: str | None = None
     raw: Any = None
 
 

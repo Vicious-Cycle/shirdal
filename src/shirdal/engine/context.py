@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import re
+import time
 from collections.abc import Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -11,6 +13,184 @@ from shirdal.core.adapter import TransportAdapter
 from shirdal.core.events import ChatAction, ChatRef, MessageEvent
 from shirdal.engine.fsm import FSMContext, FSMStorage, MemoryStorage
 from shirdal.engine.media import ProgressCallback, ProgressTracker
+
+
+_DRAFT_COUNTER = itertools.count(1)
+
+
+class DraftStream:
+    """Async context manager for live AI message streaming via Bot API sendMessageDraft."""
+
+    def __init__(
+        self,
+        ctx: Context,
+        *,
+        draft_id: int | None = None,
+        parse_mode: str | None = "html",
+        can_stop: bool = False,
+        keep_on_stop: bool = False,
+        min_interval: float = 0.25,
+        finalize: bool = True,
+    ) -> None:
+        self._ctx = ctx
+        self.draft_id = int(draft_id) if draft_id is not None else next(_DRAFT_COUNTER)
+        self.parse_mode = parse_mode
+        self.can_stop = can_stop
+        self.keep_on_stop = keep_on_stop
+        self.min_interval = max(0.0, float(min_interval))
+        self.finalize = finalize
+        self._buffer: list[str] = []
+        self._last_sent: float = 0.0
+        self.message: Context | None = None
+
+    @property
+    def text(self) -> str:
+        return "".join(self._buffer)
+
+    async def __aenter__(self) -> DraftStream:
+        return self
+
+    async def write(self, chunk: str, *, force: bool = False) -> None:
+        if not chunk:
+            return
+        self._buffer.append(chunk)
+        await self._flush(force=force)
+
+    async def update(self, full_text: str, *, force: bool = False) -> None:
+        self._buffer = [full_text]
+        await self._flush(force=force)
+
+    async def _flush(self, *, force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and self.min_interval > 0 and (now - self._last_sent) < self.min_interval:
+            return
+        fn = self._ctx._resolve_adapter_method("send_message_draft")
+        if fn is not None:
+            await fn(
+                self._ctx.chat_id,
+                self.draft_id,
+                self.text,
+                parse_mode=self.parse_mode,
+                can_stop=self.can_stop,
+                keep_on_stop=self.keep_on_stop,
+            )
+            self._last_sent = now
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        if exc_type is not None or not self.finalize:
+            return
+        final_text = self.text
+        if final_text:
+            self.message = await self._ctx.reply(final_text, parse_mode=self.parse_mode)
+
+
+class RichDraftStream:
+    """Async context manager for streaming Bot API 10.1+ Rich Messages."""
+
+    def __init__(
+        self,
+        ctx: Context,
+        *,
+        draft_id: int | None = None,
+        is_rtl: bool | None = None,
+        can_stop: bool = False,
+        keep_on_stop: bool = False,
+        min_interval: float = 0.25,
+        finalize: bool = True,
+        mode: str = "html",
+    ) -> None:
+        self._ctx = ctx
+        self.draft_id = int(draft_id) if draft_id is not None else next(_DRAFT_COUNTER)
+        self.is_rtl = is_rtl
+        self.can_stop = can_stop
+        self.keep_on_stop = keep_on_stop
+        self.min_interval = max(0.0, float(min_interval))
+        self.finalize = finalize
+        self.mode = mode
+        self._buffer: list[str] = []
+        self._blocks: list[dict[str, Any]] | None = None
+        self._last_sent: float = 0.0
+        self.message: Context | None = None
+
+    @property
+    def text(self) -> str:
+        return "".join(self._buffer)
+
+    async def __aenter__(self) -> RichDraftStream:
+        return self
+
+    async def thinking(self, label: str = "Thinking...") -> None:
+        fn = self._ctx._resolve_adapter_method("send_rich_message_draft")
+        if fn is not None:
+            await fn(
+                self._ctx.chat_id,
+                self.draft_id,
+                blocks=[{"type": "thinking", "text": label}],
+                is_rtl=self.is_rtl,
+                can_stop=self.can_stop,
+                keep_on_stop=self.keep_on_stop,
+            )
+            self._last_sent = time.monotonic()
+
+    async def write(self, chunk: str, *, force: bool = False) -> None:
+        if not chunk:
+            return
+        self._blocks = None
+        self._buffer.append(chunk)
+        await self._flush(force=force)
+
+    async def update(
+        self,
+        *,
+        html: str | None = None,
+        markdown: str | None = None,
+        blocks: Sequence[dict[str, Any]] | None = None,
+        force: bool = False,
+    ) -> None:
+        if blocks is not None:
+            self._blocks = list(blocks)
+            self._buffer.clear()
+        elif html is not None:
+            self.mode = "html"
+            self._blocks = None
+            self._buffer = [html]
+        elif markdown is not None:
+            self.mode = "markdown"
+            self._blocks = None
+            self._buffer = [markdown]
+        await self._flush(force=force)
+
+    async def _flush(self, *, force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and self.min_interval > 0 and (now - self._last_sent) < self.min_interval:
+            return
+        fn = self._ctx._resolve_adapter_method("send_rich_message_draft")
+        if fn is None:
+            return
+        kwargs: dict[str, Any] = {
+            "is_rtl": self.is_rtl,
+            "can_stop": self.can_stop,
+            "keep_on_stop": self.keep_on_stop,
+        }
+        if self._blocks is not None:
+            kwargs["blocks"] = self._blocks
+        elif self.mode == "markdown":
+            kwargs["markdown"] = self.text
+        else:
+            kwargs["html"] = self.text
+        await fn(self._ctx.chat_id, self.draft_id, **kwargs)
+        self._last_sent = now
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        if exc_type is not None or not self.finalize:
+            return
+        if self._blocks is not None:
+            self.message = await self._ctx.reply_rich(blocks=self._blocks, is_rtl=self.is_rtl)
+        elif self.text:
+            if self.mode == "markdown":
+                self.message = await self._ctx.reply_rich(markdown=self.text, is_rtl=self.is_rtl)
+            else:
+                self.message = await self._ctx.reply_rich(html=self.text, is_rtl=self.is_rtl)
 
 
 class Context:
@@ -70,6 +250,14 @@ class Context:
     def has_media(self) -> bool:
         return self.message.media is not None
 
+    @property
+    def callback_id(self) -> str | None:
+        return self.message.callback_id
+
+    @property
+    def callback_data(self) -> str | None:
+        return self.message.callback_data
+
     def _spawn(self, coro: Any) -> asyncio.Task[Any]:
         task = asyncio.create_task(coro)
         if self._task_pool is not None:
@@ -90,12 +278,15 @@ class Context:
         *,
         auto_delete: float | None = None,
         parse_mode: str | None = "html",
+        reply_markup: dict[str, Any] | None = None,
     ) -> Context:
+        kwargs: dict[str, Any] = {"reply_to": self.message.id, "parse_mode": parse_mode}
+        if reply_markup is not None:
+            kwargs["reply_markup"] = reply_markup
         sent = await self.adapter.send_message(
             self.chat_id,
             text,
-            reply_to=self.message.id,
-            parse_mode=parse_mode,
+            **kwargs,
         )
         if auto_delete is not None and auto_delete >= 0:
             self._schedule_delete(sent.id, auto_delete)
@@ -112,12 +303,15 @@ class Context:
         *,
         auto_delete: float | None = None,
         parse_mode: str | None = "html",
+        reply_markup: dict[str, Any] | None = None,
     ) -> Context:
+        kwargs: dict[str, Any] = {"reply_to": None, "parse_mode": parse_mode}
+        if reply_markup is not None:
+            kwargs["reply_markup"] = reply_markup
         sent = await self.adapter.send_message(
             self.chat_id,
             text,
-            reply_to=None,
-            parse_mode=parse_mode,
+            **kwargs,
         )
         if auto_delete is not None and auto_delete >= 0:
             self._schedule_delete(sent.id, auto_delete)
@@ -134,12 +328,16 @@ class Context:
         *,
         auto_delete: float | None = None,
         parse_mode: str | None = "html",
+        reply_markup: dict[str, Any] | None = None,
     ) -> Context:
+        kwargs: dict[str, Any] = {"parse_mode": parse_mode}
+        if reply_markup is not None:
+            kwargs["reply_markup"] = reply_markup
         edited = await self.adapter.edit_message(
             self.chat_id,
             self.message.id,
             text,
-            parse_mode=parse_mode,
+            **kwargs,
         )
         if auto_delete is not None and auto_delete >= 0:
             self._schedule_delete(edited.id, auto_delete)
@@ -309,3 +507,153 @@ class Context:
             stop_flag = True
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+
+    async def answer(
+        self,
+        text: str | None = None,
+        *,
+        show_alert: bool = False,
+        url: str | None = None,
+        cache_time: int | None = None,
+    ) -> None:
+        cb_id = self.message.callback_id
+        if not cb_id:
+            return
+        fn = getattr(self.adapter, "answer_callback", None)
+        if fn is None:
+            raw_adapter = getattr(self.adapter, "raw", None)
+            fn = getattr(raw_adapter, "answer_callback", None)
+        if fn is not None:
+            await fn(cb_id, text, show_alert=show_alert, url=url, cache_time=cache_time)
+
+    def _resolve_adapter_method(self, name: str) -> Any:
+        fn = getattr(self.adapter, name, None)
+        if fn is None:
+            raw_adapter = getattr(self.adapter, "raw", None)
+            fn = getattr(raw_adapter, name, None)
+        return fn
+
+    async def reply_ephemeral(
+        self,
+        text: str,
+        *,
+        receiver_user_id: int | None = None,
+        replace: bool = False,
+        parse_mode: str | None = "html",
+        reply_markup: dict[str, Any] | None = None,
+    ) -> Context:
+        """Send an ephemeral reply visible only to the triggering user (Bot API 10.2+)."""
+        fn = self._resolve_adapter_method("send_ephemeral_message")
+        if fn is None:
+            raise AttributeError("Current adapter does not support send_ephemeral_message.")
+        uid = receiver_user_id if receiver_user_id is not None else self.sender_id
+        sent = await fn(
+            self.chat_id,
+            text,
+            receiver_user_id=uid,
+            callback_query_id=self.message.callback_id,
+            replace_callback_query_message=replace,
+            reply_to=self.message.id if not self.message.callback_id else None,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
+        return Context(
+            sent,
+            self.adapter,
+            task_pool=self._task_pool,
+            storage=self.state.storage,
+        )
+
+    def stream(
+        self,
+        *,
+        draft_id: int | None = None,
+        parse_mode: str | None = "html",
+        can_stop: bool = False,
+        keep_on_stop: bool = False,
+        min_interval: float = 0.25,
+        finalize: bool = True,
+    ) -> DraftStream:
+        """Stream partial replies live using Bot API sendMessageDraft."""
+        return DraftStream(
+            self,
+            draft_id=draft_id,
+            parse_mode=parse_mode,
+            can_stop=can_stop,
+            keep_on_stop=keep_on_stop,
+            min_interval=min_interval,
+            finalize=finalize,
+        )
+
+    async def set_member_tag(
+        self,
+        tag: str | None = None,
+        *,
+        user_id: int | str | None = None,
+    ) -> bool:
+        """Set or clear a member's text tag in the current group (Bot API 9.5+)."""
+        fn = self._resolve_adapter_method("set_chat_member_tag")
+        if fn is None:
+            raise AttributeError("Current adapter does not support set_chat_member_tag.")
+        target_uid = user_id if user_id is not None else self.sender_id
+        if target_uid is None:
+            raise ValueError("Cannot determine user_id for set_member_tag.")
+        return bool(await fn(self.chat_id, target_uid, tag))
+
+    async def reply_rich(
+        self,
+        rich_msg: dict[str, Any] | None = None,
+        *,
+        html: str | None = None,
+        markdown: str | None = None,
+        blocks: Sequence[dict[str, Any]] | None = None,
+        media: Sequence[dict[str, Any]] | None = None,
+        is_rtl: bool | None = None,
+        skip_entity_detection: bool | None = None,
+        reply_markup: dict[str, Any] | None = None,
+    ) -> Context:
+        """Reply with a Bot API 10.1+ Rich Message."""
+        fn = self._resolve_adapter_method("send_rich_message")
+        if fn is None:
+            raise AttributeError("Current adapter does not support send_rich_message.")
+        sent = await fn(
+            self.chat_id,
+            rich_msg,
+            html=html,
+            markdown=markdown,
+            blocks=blocks,
+            media=media,
+            is_rtl=is_rtl,
+            skip_entity_detection=skip_entity_detection,
+            reply_to=self.message.id,
+            reply_markup=reply_markup,
+        )
+        return Context(
+            sent,
+            self.adapter,
+            task_pool=self._task_pool,
+            storage=self.state.storage,
+        )
+
+    def stream_rich(
+        self,
+        *,
+        draft_id: int | None = None,
+        is_rtl: bool | None = None,
+        can_stop: bool = False,
+        keep_on_stop: bool = False,
+        min_interval: float = 0.25,
+        finalize: bool = True,
+        mode: str = "html",
+    ) -> RichDraftStream:
+        """Stream partial Rich Messages live using Bot API sendRichMessageDraft."""
+        return RichDraftStream(
+            self,
+            draft_id=draft_id,
+            is_rtl=is_rtl,
+            can_stop=can_stop,
+            keep_on_stop=keep_on_stop,
+            min_interval=min_interval,
+            finalize=finalize,
+            mode=mode,
+        )

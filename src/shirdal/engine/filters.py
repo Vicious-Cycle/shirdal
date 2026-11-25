@@ -149,3 +149,25 @@ group: Filter = _PredicateFilter(
     lambda ctx: ctx.message.chat.type in ("group", "supergroup")
 )
 reply: Filter = _PredicateFilter(lambda ctx: ctx.message.reply_to_id is not None)
+
+
+class CallbackFilter(Filter):
+    """Matches callback_query data by exact value or prefix."""
+
+    def __init__(self, data: str | None = None, *, prefix: str | None = None) -> None:
+        self.data = data
+        self.prefix = prefix
+
+    async def check(self, ctx: Context) -> bool:
+        cb = ctx.callback_data
+        if cb is None:
+            return False
+        if self.data is not None:
+            return cb == self.data
+        if self.prefix is not None:
+            return cb.startswith(self.prefix)
+        return True
+
+
+def callback(data: str | None = None, *, prefix: str | None = None) -> CallbackFilter:
+    return CallbackFilter(data, prefix=prefix)

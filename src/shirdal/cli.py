@@ -10,10 +10,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 _MAIN_TEMPLATE = """import os
-from shirdal import SelfBot, SQLiteStorage{adapter_import}
+from shirdal import Shirdal, SQLiteStorage{adapter_import}
 
 {adapter_init}
-bot = SelfBot(
+bot = Shirdal(
     adapter,
     anti_flood=True,
     plugins_dir="plugins",
@@ -25,10 +25,10 @@ if __name__ == "__main__":
     bot.run()
 """
 
-_PLUGIN_PING_TEMPLATE = """from shirdal import Context, SelfBot, command, outgoing
+_PLUGIN_PING_TEMPLATE = """from shirdal import Context, Shirdal, command, outgoing
 
 
-def setup(bot: SelfBot) -> None:
+def setup(bot: Shirdal) -> None:
     @bot.on(command("ping", prefix=".") & outgoing)
     async def ping_cmd(ctx: Context) -> None:
         msg = await ctx.edit("⚡ Checking...")
@@ -41,7 +41,31 @@ SESSION_NAME=my_account
 """
 
 
+_PLUGIN_BOTAPI_TEMPLATE = """from shirdal import Context, Shirdal, button, callback, command, incoming, inline_keyboard
+
+
+def setup(bot: Shirdal) -> None:
+    @bot.on(incoming & command("start", prefix="/"))
+    async def start_cmd(ctx: Context) -> None:
+        kb = inline_keyboard([[button("Ping", "ping")]])
+        await ctx.reply("Hello! Powered by Shirdal.", reply_markup=kb)
+
+    @bot.on_callback(callback("ping"))
+    async def on_ping_cb(ctx: Context) -> None:
+        await ctx.answer("Pong!")
+        await ctx.edit("🏓 Pong! Shirdal is alive.")
+"""
+
+_BOT_ENV_TEMPLATE = """BOT_TOKEN=123456:your_bot_token_here
+"""
+
+
 def _adapter_snippet(adapter: str) -> tuple[str, str]:
+    if adapter == "botapi":
+        return (
+            ", BotAPIAdapter",
+            'adapter = BotAPIAdapter(os.getenv("BOT_TOKEN", ""))',
+        )
     if adapter == "telethon":
         return (
             ", TelethonAdapter",
@@ -77,8 +101,10 @@ def cmd_new(args: argparse.Namespace) -> int:
         _MAIN_TEMPLATE.format(adapter_import=adapter_import, adapter_init=adapter_init),
         encoding="utf-8",
     )
-    (plugins_dir / "ping.py").write_text(_PLUGIN_PING_TEMPLATE, encoding="utf-8")
-    (target / ".env.example").write_text(_ENV_TEMPLATE, encoding="utf-8")
+    plugin_tpl = _PLUGIN_BOTAPI_TEMPLATE if args.adapter == "botapi" else _PLUGIN_PING_TEMPLATE
+    env_tpl = _BOT_ENV_TEMPLATE if args.adapter == "botapi" else _ENV_TEMPLATE
+    (plugins_dir / "ping.py").write_text(plugin_tpl, encoding="utf-8")
+    (target / ".env.example").write_text(env_tpl, encoding="utf-8")
     print(f"Created shirdal project at {target}")
     return 0
 
@@ -118,7 +144,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_new.add_argument("name", help="Project directory name")
     p_new.add_argument(
         "--adapter",
-        choices=("telethon", "hydrogram", "mock"),
+        choices=("botapi", "telethon", "hydrogram", "mock"),
         default="telethon",
         help="Default MTProto adapter",
     )

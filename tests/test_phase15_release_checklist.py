@@ -17,4 +17,5 @@ class TestPhase15ReleaseChecklist(unittest.TestCase):
         self.assertIn("[tool.mypy]", pyproject)
         self.assertIn("[tool.ruff]", pyproject)
         self.assertIn("LGPL-3.0-or-later", pyproject)
-        self.assertIn('version = "1.0.0"', pyproject)
+        import shirdal
+        self.assertIn(f'version = "{shirdal.__version__}"', pyproject)

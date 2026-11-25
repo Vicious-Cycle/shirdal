@@ -27,13 +27,17 @@ class HydrogramAdapter:
         *,
         device: DeviceProfile | None = None,
         session_string: str | None = None,
+        bot_token: str | None = None,
     ) -> None:
         try:
             from hydrogram import Client  # type: ignore[import-not-found]
-        except ImportError as exc:
-            raise AdapterError(
-                "Hydrogram is not installed. Run: pip install 'shirdal[hydrogram]'"
-            ) from exc
+        except ImportError:
+            try:
+                from pyrogram import Client  # type: ignore[import-not-found]
+            except ImportError as exc:
+                raise AdapterError(
+                    "Hydrogram/Pyrogram is not installed. Run: pip install 'shirdal[hydrogram]'"
+                ) from exc
 
         profile = device or DeviceProfile.desktop()
         kwargs: dict[str, Any] = {
@@ -46,6 +50,8 @@ class HydrogramAdapter:
         }
         if session_string is not None:
             kwargs["session_string"] = session_string
+        if bot_token is not None:
+            kwargs["bot_token"] = bot_token
 
         self._client = Client(session_name, **kwargs)
         self._queue: asyncio.Queue[UpdateEvent | None] = asyncio.Queue()
