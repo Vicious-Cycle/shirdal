@@ -1,6 +1,6 @@
 # Getting Started
 
-Shirdal requires **Python 3.11+**. The core framework and `BotAPIAdapter` have zero required third-party dependencies.
+Shirdal requires **Python 3.11+**. `BotAPIAdapter` requires zero external HTTP libraries, and `cryptography` is included out of the box for `NativeMTProtoAdapter` and `EncryptedStorage`.
 
 ## Installation
 
@@ -16,7 +16,6 @@ pip install "shirdal[telethon]"  # Telethon MTProto adapter
 pip install "shirdal[hydrogram]" # Hydrogram MTProto adapter
 pip install "shirdal[redis]"     # Redis FSM & cache backend
 pip install "shirdal[mysql]"     # MySQL FSM & cache backend
-pip install "shirdal[crypto]"    # EncryptedStorage (SecretBox)
 ```
 
 ## Scaffolding with the CLI

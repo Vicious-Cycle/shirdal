@@ -10,6 +10,11 @@ import struct
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
+try:
+    import shircrypt as _shircrypt
+except ImportError:
+    _shircrypt = None
+
 from shirdal.mtproto.tl_codec import TLWriter
 
 
@@ -23,6 +28,11 @@ def _xor16(a: bytes, b: bytes) -> bytes:
 
 def aes_ige_encrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
     """Encrypt data using AES-256-IGE (Infinite Garble Extension)."""
+    if _shircrypt is not None and _shircrypt.BACKEND == "rust":
+        try:
+            return _shircrypt.ige256_encrypt(data, key, iv)
+        except ValueError as exc:
+            raise MTProtoCryptoError(str(exc)) from exc
     if len(key) != 32:
         raise MTProtoCryptoError(f"AES-256-IGE key must be 32 bytes, got {len(key)}")
     if len(iv) != 32:
@@ -50,6 +60,11 @@ def aes_ige_encrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
 
 def aes_ige_decrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
     """Decrypt data using AES-256-IGE (Infinite Garble Extension)."""
+    if _shircrypt is not None and _shircrypt.BACKEND == "rust":
+        try:
+            return _shircrypt.ige256_decrypt(data, key, iv)
+        except ValueError as exc:
+            raise MTProtoCryptoError(str(exc)) from exc
     if len(key) != 32:
         raise MTProtoCryptoError(f"AES-256-IGE key must be 32 bytes, got {len(key)}")
     if len(iv) != 32:

@@ -2,7 +2,7 @@
 
 # Shirdal
 
-**A transport-agnostic, context-first Python framework for Telegram — featuring a zero-dependency Bot API 10.5 engine and a native MTProto 2.0 core.**
+**A transport-agnostic, context-first Python framework for Telegram — featuring a built-in Bot API 10.5 engine and a native MTProto 2.0 core.**
 
 **English** | [فارسی](README.fa.md)
 
@@ -15,7 +15,7 @@
 
 ---
 
-Most Telegram frameworks force a choice: either use a Bot API library that cannot touch MTProto, or an MTProto client with heavy, tightly-coupled internals. **Shirdal** decouples your application logic (`Dispatcher`, `Context`, filters, `FSM`, `AntiFlood`, hot-reload plugins, and storage) behind a single `TransportAdapter` protocol—and ships both a **zero-dependency Bot API 10.5 engine** and a **clean 5-layer native MTProto 2.0 core**.
+Most Telegram frameworks force a choice: either use a Bot API library that cannot touch MTProto, or an MTProto client with heavy, tightly-coupled internals. **Shirdal** decouples your application logic (`Dispatcher`, `Context`, filters, `FSM`, `AntiFlood`, hot-reload plugins, and storage) behind a single `TransportAdapter` protocol—and ships both a **zero-HTTP-dependency Bot API 10.5 engine** and a **clean 5-layer native MTProto 2.0 core**.
 
 ## Architecture
 
@@ -42,7 +42,7 @@ Most Telegram frameworks force a choice: either use a Bot API library that canno
 
 ## Key Features
 
-- **Zero-Dependency Bot API (`BotAPIAdapter`):** Keep-Alive HTTP/HTTPS client with optional `msgspec` JSON acceleration and a built-in `asyncio` `WebhookServer` (with `X-Telegram-Bot-Api-Secret-Token` verification and `GET /health`).
+- **Built-in Bot API Engine (`BotAPIAdapter`):** Keep-Alive HTTP/HTTPS client with optional `msgspec` JSON acceleration and a built-in `asyncio` `WebhookServer` (with `X-Telegram-Bot-Api-Secret-Token` verification and `GET /health`).
 - **Bot API 10.5 Ready:**
   - **Colored & Icon Buttons:** `ButtonStyle` (`primary`, `success`, `danger`), `icon` / `icon_custom_emoji_id`, `disabled`, `copy_text`, `web_app_url`, `reply_button()`, and `reply_keyboard(..., force_reply=True)`.
   - **Premium Emoji & Localized Time:** `custom_emoji()`, `custom_emoji_entity()`, `date_time()`, and `date_time_entity()`.
@@ -59,11 +59,10 @@ Most Telegram frameworks force a choice: either use a Bot API library that canno
 ## Installation
 
 ```bash
-pip install shirdal
+pip install shirdal              # Includes Bot API 10.5 + Native MTProto 2.0 (cryptography)
 
 # Optional extras
 pip install "shirdal[fast]"      # uvloop + msgspec JSON speedups
-pip install "shirdal[crypto]"    # cryptography (for NativeMTProtoAdapter & EncryptedStorage)
 pip install "shirdal[telethon]"  # Telethon adapter
 ```
 
