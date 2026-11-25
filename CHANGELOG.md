@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.0] - 2026-11-26
+
+### Added
+- **Native 5-Layer MTProto 2.0 Core (`shirdal.mtproto`):**
+  - `TLReader` / `TLWriter` zero-copy binary codec, `gzip_packed`, and `.tl` schema parser + `@dataclass(slots=True)` code generator (`generate_python_module`).
+  - `AES-256-IGE`, MTProto 2.0 KDF, `AuthKey` packet encryption/authentication, Pollard's rho factorization, and 3-step DH `HandshakeSession`.
+  - `TCPAbridgedTransport` (`asyncio`), `MTProtoSessionState` (SQLite persistence), and `MTProtoWire` (`msg_container`, `msgs_ack`, `bad_server_salt`, `rpc_result` / `rpc_error`).
+  - `PeerCache` (`access_hash` persistence), `UpdateStateTracker` (`pts`/`qts`/`seq` gap detection), and parallel chunked `FileTransferManager`.
+  - `NativeMTProtoAdapter` implementing `TransportAdapter` with automatic `FLOOD_WAIT` mapping.
+- **Repository & Documentation Polish:** Added `docs/native-mtproto.md`, `SECURITY.md`, GitHub issue/PR templates, and upgraded `README.md` / `README.fa.md`.
+
 ## [1.0.1] - 2026-11-26
 
 ### Added

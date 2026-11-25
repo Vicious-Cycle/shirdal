@@ -38,16 +38,11 @@ await ctx.reply(f"{badge} زمان اجرا: {when}", reply_markup=kb)
 ## پیام مخفی گروه (`Ephemeral`) و تگ اعضا
 
 ```python
-# ارسال پاسخ که فقط برای کاربر ارسال‌کننده قابل مشاهده است
 await ctx.reply_ephemeral("این پیام فقط برای شما نمایش داده می‌شود.")
-
-# ثبت لقب متنی برای عضو گروه بدون نیاز به ادمین کردن
 await ctx.set_member_tag("ویژه")
 ```
 
 ## استریم زنده و Rich Messages
-
-برای پاسخ‌های هوش مصنوعی یا پیام‌های گزارش‌محور با جدول، آکاردئون و پشتیبانی راست‌به‌چپ (`is_rtl=True`):
 
 ```python
 from shirdal import rich_heading, rich_table
@@ -74,6 +69,20 @@ server = adapter.create_webhook_server(
 await server.start()
 ```
 
-مسیر `GET /health` برای بررسی سلامت سرویس و `POST /tg-webhook` با بررسی هدر `X-Telegram-Bot-Api-Secret-Token` به‌صورت آماده در دسترس است.
+## هستهٔ بومی MTProto 2.0 (`NativeMTProtoAdapter`)
+
+هستهٔ بومی `shirdal.mtproto` شامل ۵ لایهٔ مجزاست (`tl_codec` / `tl_schema`، رمزنگاری `AES-256-IGE` و `AuthKey`، ترنسپورت `TCPAbridgedTransport` و `MTProtoWire`، کش `PeerCache` و `UpdateStateTracker` + `FileTransferManager`) که از طریق `NativeMTProtoAdapter` به `Shirdal` متصل می‌شود:
+
+```python
+from shirdal import DeviceProfile, NativeMTProtoAdapter, Shirdal
+
+adapter = NativeMTProtoAdapter(
+    api_id=12345,
+    api_hash="your_api_hash",
+    session_path="account.sqlite",
+    device=DeviceProfile.desktop(),
+)
+bot = Shirdal(adapter)
+```
 
 </div>

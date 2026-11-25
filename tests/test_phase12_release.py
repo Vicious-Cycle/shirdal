@@ -11,7 +11,7 @@ EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples" / "quickstart
 
 class TestPhase12Release(unittest.IsolatedAsyncioTestCase):
     def test_version_is_1_0_0_and_examples_parse(self) -> None:
-        self.assertEqual(shirdal.__version__, "1.0.1")
+        self.assertEqual(shirdal.__version__, "1.1.0")
         for py_file in EXAMPLES_DIR.rglob("*.py"):
             ast.parse(py_file.read_text(encoding="utf-8"))
 

@@ -40,6 +40,7 @@ from shirdal.core.botapi_adapter import (
 )
 from shirdal.core.hydrogram_adapter import HydrogramAdapter
 from shirdal.core.mock_adapter import MockAdapter
+from shirdal.core.native_mtproto_adapter import NativeMTProtoAdapter
 from shirdal.core.telethon_adapter import TelethonAdapter
 
 __all__ = [
@@ -55,6 +56,7 @@ __all__ = [
     "MessageEvent",
     "UpdateEvent",
     "MockAdapter",
+    "NativeMTProtoAdapter",
     "TelethonAdapter",
     "BotAPIAdapter",
     "WebhookServer",

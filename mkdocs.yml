@@ -1,5 +1,5 @@
 site_name: Shirdal
-site_description: A fast, context-first Python framework for Telegram Bot API and MTProto clients.
+site_description: A transport-agnostic, context-first Python framework for Telegram Bot API and MTProto 2.0.
 repo_url: https://github.com/Vicious-Cycle/shirdal
 repo_name: Vicious-Cycle/shirdal
 
@@ -24,8 +24,9 @@ theme:
     - navigation.top
 
 nav:
-  - Home: getting-started.md
-  - Bot API Features: bot-api.md
+  - Getting Started: getting-started.md
+  - Bot API 10.5 Features: bot-api.md
   - Rich Messages: rich-messages.md
+  - Native MTProto 2.0: native-mtproto.md
   - Webhook & Deployment: webhook-and-deployment.md
-  - فارسی: fa/README.md
+  - مستندات فارسی: fa/README.md

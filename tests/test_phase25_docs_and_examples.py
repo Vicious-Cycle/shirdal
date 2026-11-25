@@ -19,7 +19,12 @@ class TestPhase25DocsAndExamples(unittest.TestCase):
             "docs/bot-api.md",
             "docs/rich-messages.md",
             "docs/webhook-and-deployment.md",
+            "docs/native-mtproto.md",
             "docs/fa/README.md",
+            "SECURITY.md",
+            ".github/ISSUE_TEMPLATE/bug_report.md",
+            ".github/ISSUE_TEMPLATE/feature_request.md",
+            ".github/PULL_REQUEST_TEMPLATE.md",
         ]
         for rel in required_files:
             path = REPO_ROOT / rel
@@ -38,6 +43,7 @@ class TestPhase25DocsAndExamples(unittest.TestCase):
             "Shirdal",
             "SelfBot",
             "BotAPIAdapter",
+            "NativeMTProtoAdapter",
             "WebhookServer",
             "ButtonStyle",
             "button",

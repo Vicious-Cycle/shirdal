@@ -41,6 +41,7 @@ from shirdal.core.botapi_adapter import (
 )
 from shirdal.core.hydrogram_adapter import HydrogramAdapter
 from shirdal.core.mock_adapter import MockAdapter
+from shirdal.core.native_mtproto_adapter import NativeMTProtoAdapter
 from shirdal.core.telethon_adapter import TelethonAdapter
 from shirdal.engine import (
     Context,
@@ -103,6 +104,7 @@ __all__ = [
     "MessageEvent",
     "UpdateEvent",
     "MockAdapter",
+    "NativeMTProtoAdapter",
     "TelethonAdapter",
     "BotAPIAdapter",
     "WebhookServer",
@@ -167,4 +169,4 @@ __all__ = [
     "SecretBox",
     "CachedChat",
 ]
-__version__ = "1.0.1"
+__version__ = "1.1.0"
