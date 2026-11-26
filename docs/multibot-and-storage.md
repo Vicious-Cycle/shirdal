@@ -2,10 +2,8 @@
 
 ## Running Multiple Accounts (`MultiBot`)
 
-Share the same handlers across multiple bots or userbots with independent lifecycles:
-
 ```python
-from shirdal import BotAPIAdapter, MultiBot, Shirdal
+from shirdal import BotAPIAdapter, MultiBot, Shirdal, command
 
 bot1 = Shirdal(BotAPIAdapter(TOKEN_1))
 bot2 = Shirdal(BotAPIAdapter(TOKEN_2))

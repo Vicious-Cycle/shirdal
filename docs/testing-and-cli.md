@@ -2,8 +2,6 @@
 
 ## Testing Without Telegram
 
-`MockAdapter` lets you test handlers, FSM flows, and middlewares 100% offline:
-
 ```python
 import asyncio
 from shirdal import MockAdapter, Shirdal, command

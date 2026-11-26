@@ -1,20 +1,45 @@
-:root {
-  --md-primary-fg-color: #d84315;
-  --md-primary-fg-color--light: #ff7043;
-  --md-primary-fg-color--dark: #9f0000;
-  --md-accent-fg-color: #f57c00;
+/* Shirdal Theme: Calm Obsidian Header + Warm Logo Gold Accent */
+:root,
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #14171c;
+  --md-primary-fg-color--light: #1e232b;
+  --md-primary-fg-color--dark: #0d0f13;
+  --md-primary-bg-color: #f4f5f7;
+  --md-accent-fg-color: #b88928;
+  --md-typeset-a-color: #9e741b;
 }
 
 [data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #111318;
+  --md-primary-fg-color--light: #1a1e26;
+  --md-primary-fg-color--dark: #0a0c0f;
+  --md-primary-bg-color: #e6edf3;
+  --md-accent-fg-color: #d4a843;
+  --md-typeset-a-color: #d4a843;
   --md-default-bg-color: #0d1117;
   --md-default-fg-color: #e6edf3;
   --md-code-bg-color: #161b22;
 }
 
-.md-typeset pre > code {
+.md-header,
+.md-tabs {
+  border-bottom: 1px solid rgba(212, 168, 67, 0.22);
+}
+
+.md-nav__link--active,
+.md-nav__item .md-nav__link--active {
+  color: var(--md-accent-fg-color);
+  font-weight: 600;
+}
+
+.md-typeset pre > code,
+.md-typeset .admonition {
   border-radius: 8px;
 }
 
-.md-typeset .admonition {
-  border-radius: 8px;
+/* Keep code blocks LTR inside RTL Persian docs */
+[dir="rtl"] pre,
+[dir="rtl"] code {
+  direction: ltr;
+  text-align: left;
 }

@@ -12,5 +12,5 @@
 
 ## From `Pyrogram` / `Telethon`
 
-- Replace `TgCrypto` with **`shircrypt`** (included via `pip install "shirdal[shircrypt]"` for 4.67x–11.84x faster crypto).
-- Handlers receive a single unified `ctx: Context` with `ctx.reply()`, `ctx.edit()`, `ctx.reply_media()`, and `ctx.download()`.
+- Replace `TgCrypto` with **`shircrypt`** (`pip install "shirdal[shircrypt]"` for 4.67x–11.84x faster crypto).
+- Handlers receive a unified `ctx: Context` with `ctx.reply()`, `ctx.edit()`, `ctx.reply_media()`, and `ctx.download()`.

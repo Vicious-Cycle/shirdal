@@ -6,7 +6,7 @@ Register global middlewares with `@bot.use` or router-scoped middlewares with `@
 
 ```python
 import time
-from shirdal import Context, NextHandler, Shirdal
+from shirdal import Context, NextHandler
 
 @bot.use
 async def timing_middleware(ctx: Context, call_next: NextHandler) -> None:
