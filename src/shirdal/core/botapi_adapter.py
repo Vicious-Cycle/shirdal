@@ -1197,6 +1197,406 @@ class BotAPIAdapter:
         res = await self._call("createForumTopic", payload)
         return dict(res) if isinstance(res, dict) else {"result": res}
 
+    async def edit_forum_topic(
+        self,
+        chat_id: int | str,
+        message_thread_id: int,
+        *,
+        name: str | None = None,
+        icon_custom_emoji_id: str | None = None,
+    ) -> bool:
+        """Edit a forum topic's name or icon."""
+        payload: dict[str, Any] = {
+            "chat_id": chat_id,
+            "message_thread_id": int(message_thread_id),
+        }
+        if name is not None:
+            payload["name"] = name
+        if icon_custom_emoji_id is not None:
+            payload["icon_custom_emoji_id"] = str(icon_custom_emoji_id)
+        return bool(await self._call("editForumTopic", payload))
+
+    async def close_forum_topic(self, chat_id: int | str, message_thread_id: int) -> bool:
+        """Close an open forum topic."""
+        return bool(
+            await self._call(
+                "closeForumTopic",
+                {"chat_id": chat_id, "message_thread_id": int(message_thread_id)},
+            )
+        )
+
+    async def reopen_forum_topic(self, chat_id: int | str, message_thread_id: int) -> bool:
+        """Reopen a closed forum topic."""
+        return bool(
+            await self._call(
+                "reopenForumTopic",
+                {"chat_id": chat_id, "message_thread_id": int(message_thread_id)},
+            )
+        )
+
+    async def delete_forum_topic(self, chat_id: int | str, message_thread_id: int) -> bool:
+        """Delete a forum topic along with all its messages."""
+        return bool(
+            await self._call(
+                "deleteForumTopic",
+                {"chat_id": chat_id, "message_thread_id": int(message_thread_id)},
+            )
+        )
+
+    async def unpin_all_forum_topic_messages(
+        self,
+        chat_id: int | str,
+        message_thread_id: int,
+    ) -> bool:
+        """Clear the list of pinned messages in a forum topic."""
+        return bool(
+            await self._call(
+                "unpinAllForumTopicMessages",
+                {"chat_id": chat_id, "message_thread_id": int(message_thread_id)},
+            )
+        )
+
+    async def get_forum_topic_icon_stickers(self) -> list[dict[str, Any]]:
+        """Get custom emoji stickers usable as forum topic icons."""
+        res = await self._call("getForumTopicIconStickers", {})
+        return list(res) if isinstance(res, list) else []
+
+    # ── Gifts (Bot API 8.0+) ────────────────────────────────────────
+
+    async def get_available_gifts(self) -> list[dict[str, Any]]:
+        """Return the list of gifts that can be sent by the bot."""
+        res = await self._call("getAvailableGifts", {})
+        if isinstance(res, dict) and isinstance(res.get("gifts"), list):
+            return list(res["gifts"])
+        return list(res) if isinstance(res, list) else []
+
+    async def send_gift(
+        self,
+        gift_id: str,
+        *,
+        user_id: int | None = None,
+        chat_id: int | str | None = None,
+        pay_for_upgrade: bool | None = None,
+        text: str | None = None,
+        text_parse_mode: str | None = None,
+        text_entities: Sequence[dict[str, Any]] | None = None,
+    ) -> bool:
+        """Send a gift to a user or channel chat."""
+        if user_id is None and chat_id is None:
+            raise ValueError("Either user_id or chat_id must be provided.")
+        payload: dict[str, Any] = {"gift_id": str(gift_id)}
+        if user_id is not None:
+            payload["user_id"] = int(user_id)
+        if chat_id is not None:
+            payload["chat_id"] = chat_id
+        if pay_for_upgrade is not None:
+            payload["pay_for_upgrade"] = bool(pay_for_upgrade)
+        if text is not None:
+            payload["text"] = text
+        if text_parse_mode is not None:
+            payload["text_parse_mode"] = text_parse_mode
+        if text_entities is not None:
+            payload["text_entities"] = list(text_entities)
+        return bool(await self._call("sendGift", payload))
+
+    async def gift_premium_subscription(
+        self,
+        user_id: int,
+        month_count: int,
+        star_count: int,
+        *,
+        text: str | None = None,
+        text_parse_mode: str | None = None,
+        text_entities: Sequence[dict[str, Any]] | None = None,
+    ) -> bool:
+        """Gift a Telegram Premium subscription to a user using Stars."""
+        payload: dict[str, Any] = {
+            "user_id": int(user_id),
+            "month_count": int(month_count),
+            "star_count": int(star_count),
+        }
+        if text is not None:
+            payload["text"] = text
+        if text_parse_mode is not None:
+            payload["text_parse_mode"] = text_parse_mode
+        if text_entities is not None:
+            payload["text_entities"] = list(text_entities)
+        return bool(await self._call("giftPremiumSubscription", payload))
+
+    # ── Stories (Business Stories, Bot API 9.0+) ────────────────────
+
+    async def post_story(
+        self,
+        business_connection_id: str,
+        content: dict[str, Any],
+        active_period: int,
+        *,
+        caption: str | None = None,
+        parse_mode: str | None = None,
+        caption_entities: Sequence[dict[str, Any]] | None = None,
+        areas: Sequence[dict[str, Any]] | None = None,
+        post_to_chat_page: bool | None = None,
+        protect_content: bool | None = None,
+    ) -> dict[str, Any]:
+        """Post a story on behalf of a managed business account."""
+        payload: dict[str, Any] = {
+            "business_connection_id": str(business_connection_id),
+            "content": dict(content),
+            "active_period": int(active_period),
+        }
+        if caption is not None:
+            payload["caption"] = caption
+        if parse_mode is not None:
+            payload["parse_mode"] = parse_mode
+        if caption_entities is not None:
+            payload["caption_entities"] = list(caption_entities)
+        if areas is not None:
+            payload["areas"] = list(areas)
+        if post_to_chat_page is not None:
+            payload["post_to_chat_page"] = bool(post_to_chat_page)
+        if protect_content is not None:
+            payload["protect_content"] = bool(protect_content)
+        res = await self._call("postStory", payload)
+        return dict(res) if isinstance(res, dict) else {"result": res}
+
+    async def edit_story(
+        self,
+        business_connection_id: str,
+        story_id: int,
+        content: dict[str, Any],
+        *,
+        caption: str | None = None,
+        parse_mode: str | None = None,
+        caption_entities: Sequence[dict[str, Any]] | None = None,
+        areas: Sequence[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Edit a previously posted business story."""
+        payload: dict[str, Any] = {
+            "business_connection_id": str(business_connection_id),
+            "story_id": int(story_id),
+            "content": dict(content),
+        }
+        if caption is not None:
+            payload["caption"] = caption
+        if parse_mode is not None:
+            payload["parse_mode"] = parse_mode
+        if caption_entities is not None:
+            payload["caption_entities"] = list(caption_entities)
+        if areas is not None:
+            payload["areas"] = list(areas)
+        res = await self._call("editStory", payload)
+        return dict(res) if isinstance(res, dict) else {"result": res}
+
+    async def delete_story(self, business_connection_id: str, story_id: int) -> bool:
+        """Delete a story previously posted by the bot on behalf of a business account."""
+        return bool(
+            await self._call(
+                "deleteStory",
+                {
+                    "business_connection_id": str(business_connection_id),
+                    "story_id": int(story_id),
+                },
+            )
+        )
+
+    # ── Business Features (Bot API 7.2+ / 9.0+) ─────────────────────
+
+    async def get_business_connection(self, business_connection_id: str) -> dict[str, Any]:
+        """Get information about the connection of the bot with a business account."""
+        res = await self._call(
+            "getBusinessConnection",
+            {"business_connection_id": str(business_connection_id)},
+        )
+        return dict(res) if isinstance(res, dict) else {"result": res}
+
+    async def read_business_message(
+        self,
+        business_connection_id: str,
+        chat_id: int | str,
+        message_id: int,
+    ) -> bool:
+        """Mark an incoming business message as read."""
+        return bool(
+            await self._call(
+                "readBusinessMessage",
+                {
+                    "business_connection_id": str(business_connection_id),
+                    "chat_id": chat_id,
+                    "message_id": int(message_id),
+                },
+            )
+        )
+
+    async def delete_business_messages(
+        self,
+        business_connection_id: str,
+        message_ids: Sequence[int],
+    ) -> bool:
+        """Delete messages on behalf of a business account."""
+        return bool(
+            await self._call(
+                "deleteBusinessMessages",
+                {
+                    "business_connection_id": str(business_connection_id),
+                    "message_ids": [int(m) for m in message_ids],
+                },
+            )
+        )
+
+    async def set_business_account_name(
+        self,
+        business_connection_id: str,
+        first_name: str,
+        *,
+        last_name: str | None = None,
+    ) -> bool:
+        """Change the first and last name of a managed business account."""
+        payload: dict[str, Any] = {
+            "business_connection_id": str(business_connection_id),
+            "first_name": first_name,
+        }
+        if last_name is not None:
+            payload["last_name"] = last_name
+        return bool(await self._call("setBusinessAccountName", payload))
+
+    async def set_business_account_username(
+        self,
+        business_connection_id: str,
+        *,
+        username: str | None = None,
+    ) -> bool:
+        """Change the username of a managed business account."""
+        payload: dict[str, Any] = {"business_connection_id": str(business_connection_id)}
+        if username is not None:
+            payload["username"] = username
+        return bool(await self._call("setBusinessAccountUsername", payload))
+
+    async def set_business_account_bio(
+        self,
+        business_connection_id: str,
+        *,
+        bio: str | None = None,
+    ) -> bool:
+        """Change the bio of a managed business account."""
+        payload: dict[str, Any] = {"business_connection_id": str(business_connection_id)}
+        if bio is not None:
+            payload["bio"] = bio
+        return bool(await self._call("setBusinessAccountBio", payload))
+
+    async def set_business_account_gift_settings(
+        self,
+        business_connection_id: str,
+        show_gift_button: bool,
+        accepted_gift_types: dict[str, Any],
+    ) -> bool:
+        """Change privacy settings pertaining to incoming gifts in a business account."""
+        return bool(
+            await self._call(
+                "setBusinessAccountGiftSettings",
+                {
+                    "business_connection_id": str(business_connection_id),
+                    "show_gift_button": bool(show_gift_button),
+                    "accepted_gift_types": dict(accepted_gift_types),
+                },
+            )
+        )
+
+    async def get_business_account_star_balance(
+        self,
+        business_connection_id: str,
+    ) -> dict[str, Any]:
+        """Return the amount of Telegram Stars owned by a managed business account."""
+        res = await self._call(
+            "getBusinessAccountStarBalance",
+            {"business_connection_id": str(business_connection_id)},
+        )
+        return dict(res) if isinstance(res, dict) else {"result": res}
+
+    async def get_business_account_gifts(
+        self,
+        business_connection_id: str,
+        *,
+        exclude_unsaved: bool | None = None,
+        exclude_saved: bool | None = None,
+        exclude_unlimited: bool | None = None,
+        exclude_limited: bool | None = None,
+        exclude_unique: bool | None = None,
+        sort_by_price: bool | None = None,
+        offset: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Return the gifts received and owned by a managed business account."""
+        payload: dict[str, Any] = {"business_connection_id": str(business_connection_id)}
+        for key, val in (
+            ("exclude_unsaved", exclude_unsaved),
+            ("exclude_saved", exclude_saved),
+            ("exclude_unlimited", exclude_unlimited),
+            ("exclude_limited", exclude_limited),
+            ("exclude_unique", exclude_unique),
+            ("sort_by_price", sort_by_price),
+        ):
+            if val is not None:
+                payload[key] = bool(val)
+        if offset is not None:
+            payload["offset"] = str(offset)
+        if limit is not None:
+            payload["limit"] = int(limit)
+        res = await self._call("getBusinessAccountGifts", payload)
+        return dict(res) if isinstance(res, dict) else {"result": res}
+
+    async def convert_gift_to_stars(
+        self,
+        business_connection_id: str,
+        owned_gift_id: str,
+    ) -> bool:
+        """Convert a regular gift owned by a business account to Telegram Stars."""
+        return bool(
+            await self._call(
+                "convertGiftToStars",
+                {
+                    "business_connection_id": str(business_connection_id),
+                    "owned_gift_id": str(owned_gift_id),
+                },
+            )
+        )
+
+    async def upgrade_gift(
+        self,
+        business_connection_id: str,
+        owned_gift_id: str,
+        *,
+        keep_original_details: bool | None = None,
+        star_count: int | None = None,
+    ) -> bool:
+        """Upgrade a regular gift owned by a business account to a unique gift."""
+        payload: dict[str, Any] = {
+            "business_connection_id": str(business_connection_id),
+            "owned_gift_id": str(owned_gift_id),
+        }
+        if keep_original_details is not None:
+            payload["keep_original_details"] = bool(keep_original_details)
+        if star_count is not None:
+            payload["star_count"] = int(star_count)
+        return bool(await self._call("upgradeGift", payload))
+
+    async def transfer_gift(
+        self,
+        business_connection_id: str,
+        owned_gift_id: str,
+        new_owner_chat_id: int,
+        *,
+        star_count: int | None = None,
+    ) -> bool:
+        """Transfer an owned unique gift to another user."""
+        payload: dict[str, Any] = {
+            "business_connection_id": str(business_connection_id),
+            "owned_gift_id": str(owned_gift_id),
+            "new_owner_chat_id": int(new_owner_chat_id),
+        }
+        if star_count is not None:
+            payload["star_count"] = int(star_count)
+        return bool(await self._call("transferGift", payload))
+
     async def set_my_settings(
         self,
         *,
