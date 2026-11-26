@@ -1,8 +1,9 @@
 site_name: Shirdal
-site_description: One Python framework for Telegram bots and userbots (Bot API 10.5 + Native MTProto 2.0)
+site_description: Modern, context-first Python framework for Telegram Bot API 10.5 & Native MTProto 2.0
 site_url: https://vicious-cycle.github.io/shirdal/
 repo_url: https://github.com/Vicious-Cycle/shirdal
 repo_name: Vicious-Cycle/shirdal
+edit_uri: edit/main/docs/
 
 theme:
   name: material
@@ -12,24 +13,41 @@ theme:
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: deep orange
-      accent: orange
+      accent: amber
       toggle:
-        icon: material/brightness-7
+        icon: material/weather-night
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: deep orange
-      accent: orange
+      accent: amber
       toggle:
-        icon: material/brightness-4
+        icon: material/weather-sunny
         name: Switch to light mode
   features:
-    - navigation.tabs
     - navigation.sections
+    - navigation.expand
     - navigation.top
+    - navigation.footer
     - search.suggest
     - search.highlight
     - content.code.copy
+    - content.code.annotate
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: false
+            show_root_heading: true
+            heading_level: 2
+            members_order: source
 
 markdown_extensions:
   - admonition
@@ -37,13 +55,34 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.highlight:
       anchor_linenums: true
+  - pymdownx.tabbed:
+      alternate_style: true
   - tables
+  - attr_list
 
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
-  - Bot API: bot-api.md
-  - Rich Messages: rich-messages.md
-  - Native MTProto 2.0: native-mtproto.md
-  - Webhook & Deployment: webhook-and-deployment.md
+  - Core & Adapters:
+      - Bot API 10.5: bot-api.md
+      - Rich Messages: rich-messages.md
+      - Native MTProto 2.0: native-mtproto.md
+      - Hybrid Mode (50MB+): hybrid-mode.md
+  - Routing & FSM:
+      - Routers & Magic Filter F: routing-and-filters.md
+      - FSM, Storage & ctx.ask(): fsm-and-storage.md
+  - Production & Tooling:
+      - Middlewares & Anti-Flood: middleware-and-antiflood.md
+      - Plugins & Scheduler: plugins-and-scheduler.md
+      - MultiBot & Encrypted Storage: multibot-and-storage.md
+      - Testing & CLI: testing-and-cli.md
+      - Webhook & Deployment: webhook-and-deployment.md
+  - Migration & Changelog:
+      - Migrate from aiogram / Pyrogram: migration.md
+      - Changelog: changelog.md
+  - API Reference:
+      - Client, Router & MultiBot: api/client.md
+      - Context & FSM: api/context-fsm.md
+      - Adapters: api/adapters.md
+      - Filters, Guard & Storage: api/guard-storage.md
   - مستندات فارسی: fa/README.md
