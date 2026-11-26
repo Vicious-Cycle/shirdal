@@ -1,14 +1,15 @@
 <div align="center" dir="rtl">
 
-<img src="docs/assets/logo-banner.png" alt="لوگوی شیر‌دال" width="480" />
+<img src="docs/assets/logo-banner.png" alt="لوگوی شیر‌دال" width="460" />
 
-**فریم‌ورک سریع، ماژولار و Context-First پایتون برای تلگرام — مجهز به موتور داخلی Bot API 10.5 و هستهٔ بومی MTProto 2.0**
+**یک فریم‌ورک مدرن پایتون برای ربات‌ها و یوزربات‌های تلگرام**
 
-[English](README.md) | **فارسی**
+[مستندات آنلاین](https://vicious-cycle.github.io/shirdal/fa/) • [بنچمارک‌ها](https://github.com/Vicious-Cycle/shircrypt#benchmarks) • [دانلود مستندات (.md)](https://vicious-cycle.github.io/shirdal/shirdal-docs.md) • [English](README.md)
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![PyPI](https://img.shields.io/pypi/v/shirdal.svg?color=007ec6)](https://pypi.org/project/shirdal/)
 [![CI](https://github.com/Vicious-Cycle/shirdal/actions/workflows/ci.yml/badge.svg)](https://github.com/Vicious-Cycle/shirdal/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/shirdal.svg?color=d4a843)](https://pypi.org/project/shirdal/)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%2B-3776AB.svg)](https://www.python.org/downloads/)
+[![Crypto](https://img.shields.io/badge/crypto-shircrypt%204.67x-d4a843.svg)](https://github.com/Vicious-Cycle/shircrypt)
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](LICENSE)
 
 </div>
@@ -17,120 +18,80 @@
 
 <div dir="rtl">
 
-شیر‌دال منطق ربات (`Dispatcher`، `Context`، فیلترها، `FSM`، ضدبلاک، پلاگین‌های زنده و ذخیره‌سازی) را پشت پروتکل `TransportAdapter` از لایهٔ شبکه جدا می‌کند. نتیجه یک معماری واحد است که هم با **موتور داخلی Bot API 10.5** (بدون نیاز به کتابخانهٔ HTTP خارجی) کار می‌کند و هم **هستهٔ بومی ۵ لایه‌ای MTProto 2.0** را در دل خود دارد.
+## شیر‌دال (Shirdal)
 
-## معماری سیستم
+> فریم‌ورک ناهمگام، سریع و Context-First پایتون برای Bot API 10.5 و هستهٔ بومی MTProto 2.0
 
-```text
-  هندلرها و پلاگین‌های شما (Context، فیلترها، FSM، Scheduler، MultiBot)
-                                │
-                        TransportAdapter
-         ┌──────────────────────┼──────────────────────┐
-         ▼                      ▼                      ▼
-   BotAPIAdapter      NativeMTProtoAdapter    Telethon / Hydrogram / Mock
- (HTTP Keep-Alive +   (TL Codec, AES-256-IGE,   (رپرهای MTProto و آداپتور
-  WebhookServer)       TCP Abridged, PeerCache)  تست آفلاین)
+کد ربات را یک‌بار بنویسید و روی **Bot API**، کلاینت **Native MTProto 2.0** یا **هر دو به‌صورت هم‌زمان (`HybridAdapter`)** اجرا کنید — همراه با پشتیبانی کامل از دکمه‌های رنگی، ایموجی پرمیوم، استریم زنده و آپلود فایل‌های بالای ۵۰ مگابایت.
+
+<div dir="ltr">
+
+```python
+import os
+from shirdal import BotAPIAdapter, Context, F, Router, Shirdal, command, incoming
+
+router = Router("main")
+
+@router.on(incoming & command("start", prefix="/"))
+async def start(ctx: Context) -> None:
+    reply_ctx = await ctx.ask("اسمت چیه؟", timeout=60, filters=F.text)
+    await reply_ctx.reply(f"سلام <b>{reply_ctx.text}</b>!")
+
+if __name__ == "__main__":
+    bot = Shirdal(BotAPIAdapter(os.environ["BOT_TOKEN"]))
+    bot.include_router(router)
+    bot.run()
 ```
 
-## چرا Shirdal؟
+</div>
 
-- **موتور داخلی Bot API (`BotAPIAdapter`):** کلاینت Keep-Alive بدون نیاز به `aiohttp` یا `httpx`، با پشتیبانی اختیاری از `msgspec` و سرور `WebhookServer` داخلی روی `asyncio`.
-- **پشتیبانی کامل از Bot API 9.4 تا 10.5:** دکمه‌های رنگی (`ButtonStyle`: `primary`، `success`، `danger`)، ایموجی پرمیوم (`icon` و `custom_emoji()`)، دکمهٔ غیرفعال (`disabled`)، زمان محلی (`date_time()`)، پاسخ مخفی گروه (`ctx.reply_ephemeral()`)، استریم زندهٔ متن (`ctx.stream()`)، پیام‌های ساختاریافتهٔ `Rich Messages` (`ctx.reply_rich()` و `ctx.stream_rich()`)، تگ اعضا (`ctx.set_member_tag()`)، تاپیک در پیوی و `set_my_settings()`.
-- **هستهٔ بومی ۵ لایه‌ای MTProto 2.0 (`shirdal.mtproto` و `NativeMTProtoAdapter`):**
-  - کدک باینری Zero-Copy (`TLReader`/`TLWriter`) + کدجنراتور خودکار `.tl` به `@dataclass(slots=True)`.
-  - رمزنگاری `AES-256-IGE`، استخراج کلید MTProto 2.0، `AuthKey`، تجزیهٔ Pollard's rho و `HandshakeSession` سه مرحله‌ای.
-  - شتاب‌دهی اختیاری با Rust از طریق [`shircrypt`](https://github.com/Vicious-Cycle/shircrypt) (**۴.۶۷ برابر** سریع‌تر از `TgCrypto` به‌طور میانگین و تا **۱۱.۸۴ برابر** در AES-CTR، همراه با KDF بومی MTProto 2.0).
-  - ترنسپورت `TCPAbridgedTransport`، سشن SQLite (`MTProtoSessionState`) و `MTProtoWire` (`msg_container`، `msgs_ack`، `bad_server_salt`، `gzip_packed`، `rpc_result`).
-  - کش دائمی `PeerCache` (حافظه + SQLite)، ردیاب گپ آپدیت‌ها (`UpdateStateTracker`) و آپلود/دانلود موازی `FileTransferManager`.
-- **آماده برای محیط واقعی:** محافظ ضدبلاک `AntiFloodAdapter`، پلاگین‌های Hot-Reload، `SQLiteStorage` (حالت WAL + کش L1)، `RedisStorage`، `MySQLStorage`، `EncryptedStorage`، `MultiBot` و CLI کامل (`shirdal new`، `shirdal doctor`، `shirdal run`).
+## ویژگی‌های کلیدی
+
+- **آمادهٔ اجرا:** نصب سریع با `pip` بدون نیاز به کتابخانهٔ HTTP یا رمزنگاری خارجی.
+- **حالت ترکیبی (`HybridAdapter`):** اجرای ربات روی Bot API و ارسال خودکار فایل‌های بالای ۵۰ مگابایت از طریق MTProto.
+- **فوق‌العاده سریع:** شتاب‌یافته با اکستنشن Rust [**`shircrypt`**](https://github.com/Vicious-Cycle/shircrypt) (**۴.۶۷ برابر** سریع‌تر از `TgCrypto` و تا **۱۱.۸۴ برابر** در CTR) + پشتیبانی از `uvloop` و `msgspec`.
+- **مدرن و ماژولار:** دارای `Router` درختی، فیلتر جادویی `F`، سیستم `FSM` با پشتیبانی از Redis/SQLite (همراه با TTL) و متد تک‌خطی `await ctx.ask()`.
+- **پایدار در محیط واقعی:** محافظ ضدبلاک `AntiFloodAdapter`، پلاگین‌های Hot-Reload، زمان‌بند `@bot.every()` و تست آفلاین با `MockAdapter`.
 
 ## نصب
 
-```bash
-pip install shirdal              # نصب کامل همراه با Bot API 10.5 و Native MTProto 2.0
+**نسخهٔ پایدار**
 
-# افزونه‌های اختیاری
-pip install "shirdal[fast]"      # بهینه‌سازی سرعت با uvloop، msgspec و shircrypt (~۴.۷x سریع‌تر از TgCrypto)
-pip install "shirdal[shircrypt]" # رمزنگاری پرسرعت با Rust (~۴.۷x سریع‌تر از TgCrypto)
-pip install "shirdal[telethon]"  # آداپتر Telethon
-pip install "shirdal[redis]"     # ذخیره‌ساز Redis
-```
-
-## شروع سریع: Bot API 10.5
-
-```python
-import os
-from shirdal import (
-    BotAPIAdapter,
-    ButtonStyle,
-    Context,
-    Shirdal,
-    button,
-    callback,
-    command,
-    custom_emoji,
-    incoming,
-    inline_keyboard,
-)
-
-bot = Shirdal(BotAPIAdapter(os.environ["BOT_TOKEN"]))
-
-@bot.on(incoming & command("start", prefix="/"))
-async def start(ctx: Context) -> None:
-    badge = custom_emoji("5368324170671202286", "✨")
-    kb = inline_keyboard([
-        [
-            button("تأیید", "act:ok", style=ButtonStyle.SUCCESS, icon="5368324170671202286"),
-            button("رد", "act:no", style=ButtonStyle.DANGER),
-        ]
-    ])
-    await ctx.reply(f"{badge} <b>یک گزینه را انتخاب کنید:</b>", reply_markup=kb)
-
-@bot.on_callback(callback(prefix="act:"))
-async def on_action(ctx: Context) -> None:
-    await ctx.answer("ثبت شد")
-    await ctx.reply_ephemeral(f"عملیات: <code>{ctx.callback_data}</code>")
-
-if __name__ == "__main__":
-    bot.run()
-```
-
-## شروع سریع: Native MTProto 2.0
-
-```python
-import os
-from shirdal import Context, DeviceProfile, NativeMTProtoAdapter, Shirdal, command, outgoing
-
-adapter = NativeMTProtoAdapter(
-    int(os.environ["API_ID"]),
-    os.environ["API_HASH"],
-    session_path="account.sqlite",
-    device=DeviceProfile.desktop(),
-)
-
-bot = Shirdal(adapter, plugins_dir="plugins", hot_reload=True)
-
-@bot.on(command("ping") & outgoing)
-async def ping(ctx: Context) -> None:
-    await ctx.edit("Pong from Native MTProto 2.0", auto_delete=10)
-
-if __name__ == "__main__":
-    bot.run()
-```
-
-## مستندات
-
-- [راهنمای کامل فارسی](docs/fa/README.md)
-- [شروع سریع و CLI](docs/getting-started.md)
-- [قابلیت‌های Bot API 10.5](docs/bot-api.md)
-- [راهنمای Rich Messages](docs/rich-messages.md)
-- [معماری هستهٔ بومی MTProto 2.0](docs/native-mtproto.md)
-- [سرور Webhook و استقرار](docs/webhook-and-deployment.md)
-
-## اجرای تست‌ها
+<div dir="ltr">
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -v
+pip install shirdal
 ```
+
+</div>
+
+**نسخهٔ توسعه (Dev)**
+
+<div dir="ltr">
+
+```bash
+pip install git+https://github.com/Vicious-Cycle/shirdal.git
+```
+
+</div>
+
+**افزونه‌های اختیاری**
+
+<div dir="ltr">
+
+```bash
+pip install "shirdal[fast]"       # uvloop + msgspec + shircrypt
+pip install "shirdal[shircrypt]"  # شتاب‌دهنده Rust رمزنگاری
+pip install "shirdal[redis]"      # ذخیره‌ساز Redis
+pip install "shirdal[telethon]"   # آداپتر Telethon
+```
+
+</div>
+
+## منابع
+
+- [**مستندات کامل آنلاین**](https://vicious-cycle.github.io/shirdal/)
+- [**دانلود یک‌جای مستندات (.md)**](https://vicious-cycle.github.io/shirdal/shirdal-docs.md)
+- [**گزارش بنچمارک‌های shircrypt**](https://github.com/Vicious-Cycle/shircrypt)
 
 </div>

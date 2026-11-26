@@ -1,175 +1,82 @@
 <div align="center">
 
-<img src="docs/assets/logo-banner.png" alt="Shirdal Logo" width="480" />
+<img src="docs/assets/logo-banner.png" alt="Shirdal Logo" width="460" />
 
-**One Python framework for Telegram bots and userbots.**
-Write your handlers once, run them on the Bot API or on a native MTProto 2.0 client.
+**One Python Framework for Telegram Bots and Userbots**
 
-**English** | [فارسی](README.fa.md)
+[Documentation](https://vicious-cycle.github.io/shirdal/) • [Benchmarks](https://github.com/Vicious-Cycle/shircrypt#benchmarks) • [Download Docs (.md)](https://vicious-cycle.github.io/shirdal/shirdal-docs.md) • [فارسی](README.fa.md)
 
-[![PyPI](https://img.shields.io/pypi/v/shirdal.svg?color=007ec6)](https://pypi.org/project/shirdal/)
-[![Python](https://img.shields.io/badge/python-3.11%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![CI](https://github.com/Vicious-Cycle/shirdal/actions/workflows/ci.yml/badge.svg)](https://github.com/Vicious-Cycle/shirdal/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/shirdal.svg?color=d4a843)](https://pypi.org/project/shirdal/)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%2B-3776AB.svg)](https://www.python.org/downloads/)
+[![Crypto](https://img.shields.io/badge/crypto-shircrypt%204.67x-d4a843.svg)](https://github.com/Vicious-Cycle/shircrypt)
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](LICENSE)
 
 </div>
 
 ---
 
-## Why Shirdal
+## Shirdal
 
-Telegram has two very different APIs, and most libraries only cover one of them. Switching means rewriting your bot.
+> Modern, context-first asynchronous framework for Telegram Bot API 10.5 and Native MTProto 2.0 in Python
 
-Shirdal puts everything above the network layer (dispatcher, filters, context, FSM, middleware, scheduler, storage) behind a single `TransportAdapter` interface. Your handlers don't know or care what is underneath, so moving from a bot token to a user account is a one-line change.
+Write your handlers once and run them on the **Bot API**, a **Native MTProto 2.0** client, or **both at the same time** via `HybridAdapter` — with full support for Bot API 10.5 (colored buttons, custom emoji, rich messages, live draft streaming) and 50MB+ MTProto uploads.
 
-```text
-   Handlers · Filters · FSM · Middleware · Scheduler · Plugins · Storage
-                                  │
-                           TransportAdapter
-        ┌──────────────┬──────────┴────────┬──────────────────┐
-        ▼              ▼                   ▼                  ▼
-  BotAPIAdapter  NativeMTProtoAdapter  Telethon / Hydrogram  MockAdapter
-  (HTTP + webhook)  (built-in MTProto 2.0)   (wrappers)      (offline tests)
+```python
+import os
+from shirdal import BotAPIAdapter, Context, F, Router, Shirdal, command, incoming
+
+router = Router("main")
+
+@router.on(incoming & command("start", prefix="/"))
+async def start(ctx: Context) -> None:
+    reply_ctx = await ctx.ask("What is your name?", timeout=60, filters=F.text)
+    await reply_ctx.reply(f"Hello <b>{reply_ctx.text}</b>!")
+
+if __name__ == "__main__":
+    bot = Shirdal(BotAPIAdapter(os.environ["BOT_TOKEN"]))
+    bot.include_router(router)
+    bot.run()
 ```
 
-## Features
+## Key Features
 
-**Framework**
-- Typed `Context` with helpers such as `reply`, `edit`, `react`, `pin`, `download`, `reply_media` and `typing`
-- Composable filters (`&`, `|`, `~`, regex, commands, callbacks)
-- Multi-step conversations with `StatesGroup` (FSM)
-- Middleware, `@bot.every()` scheduler, and `MultiBot` for running several accounts at once
-- Hot-reloadable plugins: edit a file in `plugins/` and it reloads without a restart
-- Storage backends: SQLite, Redis, MySQL, plus `EncryptedStorage` for sensitive data
-- `AntiFloodAdapter` with automatic `FLOOD_WAIT` handling and per-chat pacing
+- **Ready:** Install `shirdal` with `pip` and start building bots or userbots right away — zero required external HTTP or crypto dependencies.
+- **Hybrid:** Run on `BotAPIAdapter` for inline buttons and webhooks while `HybridAdapter` automatically routes files `> 50 MiB` through `NativeMTProtoAdapter`.
+- **Fast:** Boosted by [`shircrypt`](https://github.com/Vicious-Cycle/shircrypt), a memory-safe Rust crypto extension (**4.67x faster** on average than `TgCrypto`, up to **11.84x** on AES-CTR) with optional `uvloop` and `msgspec`.
+- **Modern:** Modular `Router`s, zero-dependency magic filter `F`, `StatesGroup` FSM with Redis/SQLite TTL, and one-line `await ctx.ask()` conversations.
+- **Type-hinted:** Fully typed `Context`, filters, adapters, and `py.typed` marker for first-class IDE autocomplete and `mypy`/`pyright` support.
+- **Resilient:** Built-in `AntiFloodAdapter`, hot-reloadable plugins, `@bot.every()` scheduler, and offline testing with `MockAdapter`.
 
-**Bot API**
-- Dependency-free HTTP client with keep-alive (optional `msgspec` for faster JSON)
-- Built-in `asyncio` webhook server with secret-token verification and a `/health` endpoint
-- Support for recent Bot API features: colored buttons, custom emoji, rich messages, ephemeral replies, draft streaming, member tags and topics
+## Installing
 
-**Native MTProto 2.0**
-- Pure Python implementation: TL codec and schema code generator, AES-256-IGE, key exchange, encrypted sessions, TCP transport
-- Login with code, 2FA password or bot token; DC migration; reconnects and update gap recovery
-- Peer cache, chunked parallel file upload and download
-- Optional Rust acceleration through [`shircrypt`](https://github.com/Vicious-Cycle/shircrypt) (**4.67x faster** on average than `TgCrypto`, up to **11.84x** on AES-CTR, with native MTProto 2.0 KDF)
-
-## Installation
+**Stable version**
 
 ```bash
 pip install shirdal
 ```
 
-Optional extras:
+**Dev version**
 
 ```bash
-pip install "shirdal[fast]"       # uvloop + msgspec + shircrypt (~4.7x faster crypto than TgCrypto)
-pip install "shirdal[shircrypt]"  # Rust-accelerated AES-IGE/CTR/KDF (~4.7x faster than TgCrypto)
+pip install git+https://github.com/Vicious-Cycle/shirdal.git
+```
+
+**Optional dependencies**
+
+```bash
+pip install "shirdal[fast]"       # uvloop + msgspec + shircrypt (4.67x faster crypto)
+pip install "shirdal[shircrypt]"  # Rust-accelerated AES-IGE / CTR / KDF
+pip install "shirdal[redis]"      # Distributed Redis FSM & chat cache
 pip install "shirdal[telethon]"   # Telethon adapter
-pip install "shirdal[hydrogram]"  # Hydrogram adapter
-pip install "shirdal[redis]"      # Redis storage
-pip install "shirdal[mysql]"      # MySQL storage
 ```
 
-Requires Python 3.11 or newer.
+## Resources
 
-## Quick start
-
-### Bot API
-
-```python
-import os
-from shirdal import (
-    BotAPIAdapter, ButtonStyle, Context, Shirdal,
-    button, callback, command, incoming, inline_keyboard,
-)
-
-bot = Shirdal(BotAPIAdapter(os.environ["BOT_TOKEN"]))
-
-@bot.on(incoming & command("start", prefix="/"))
-async def start(ctx: Context) -> None:
-    kb = inline_keyboard([[
-        button("Approve", "act:ok", style=ButtonStyle.SUCCESS),
-        button("Reject", "act:no", style=ButtonStyle.DANGER),
-    ]])
-    await ctx.reply("<b>Choose an action:</b>", reply_markup=kb)
-
-@bot.on_callback(callback(prefix="act:"))
-async def on_action(ctx: Context) -> None:
-    await ctx.answer("Done")
-
-if __name__ == "__main__":
-    bot.run()
-```
-
-### Userbot (native MTProto)
-
-```python
-import os
-from shirdal import Context, DeviceProfile, NativeMTProtoAdapter, Shirdal, command, outgoing
-
-adapter = NativeMTProtoAdapter(
-    int(os.environ["API_ID"]),
-    os.environ["API_HASH"],
-    session_path="account.sqlite",
-    device=DeviceProfile.desktop(),
-)
-
-bot = Shirdal(adapter, plugins_dir="plugins", hot_reload=True)
-
-@bot.on(command("ping") & outgoing)
-async def ping(ctx: Context) -> None:
-    await ctx.edit("Pong!", auto_delete=10)
-
-if __name__ == "__main__":
-    bot.run()
-```
-
-More runnable examples live in [`examples/`](examples).
-
-## Command line
-
-```bash
-shirdal new my_bot --adapter botapi   # scaffold a project (botapi, telethon, hydrogram, mock)
-shirdal doctor                        # check Python version and optional dependencies
-shirdal run main.py                   # run an entry script
-```
-
-## Testing your bot
-
-`MockAdapter` runs your handlers fully offline, with no network and no Telegram account. Push fake updates in, assert on what was sent out. The project's own test suite is built this way:
-
-```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -v
-```
-
-## Production notes
-
-- Enable logging to see which crypto backend is active at startup:
-  ```python
-  import logging
-  logging.basicConfig(level=logging.INFO)
-  # shirdal 1.0.x started | crypto backend: shircrypt-rust (v1.0.x)
-  ```
-- Use `WebhookServer` behind a reverse proxy (nginx, Caddy) and always set a secret token.
-- Keep `.sqlite` session files private. They contain your account's authorization key.
-
-## Project status
-
-Shirdal is young. The Bot API side and the framework layer are covered by an automated test suite. The native MTProto client is a from-scratch implementation that is mostly tested against simulated servers, so expect rough edges on real accounts and please report them. The MTProto code has not had an independent security audit; for high-stakes accounts, prefer an established client such as Telethon through the provided adapter.
-
-## Documentation
-
-- [Getting started](docs/getting-started.md)
-- [Bot API features](docs/bot-api.md)
-- [Rich messages](docs/rich-messages.md)
-- [Native MTProto core](docs/native-mtproto.md)
-- [Webhook and deployment](docs/webhook-and-deployment.md)
-- [مستندات فارسی](docs/fa/README.md)
-
-## Contributing
-
-Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). For security issues, please follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
+- Check out the [**Documentation**](https://vicious-cycle.github.io/shirdal/) for full guides, `HybridAdapter`, `FSM`, and auto-generated API Reference.
+- Download the [**Full Docs (.md)**](https://vicious-cycle.github.io/shirdal/shirdal-docs.md) for offline reading or AI assistants.
+- Explore [**shircrypt**](https://github.com/Vicious-Cycle/shircrypt) for Rust MTProto 2.0 cryptography benchmarks.
+- Contributions and security reports are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 ## License
 
