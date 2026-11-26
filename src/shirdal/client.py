@@ -151,11 +151,15 @@ class Shirdal:
 
         return loop_label, json_label, crypto_label
 
-    async def _probe_startup_ping(self) -> tuple[str | None, float | None]:
+    async def _probe_startup_ping(self, connect_ms: float | None = None) -> tuple[str | None, float | None]:
         """Measure initial API latency (ms) and identity if supported by the adapter."""
         adapter = self.raw_adapter
         if type(adapter).__name__ == "MockAdapter":
             return None, None
+        cached_username = getattr(adapter, "bot_username", None)
+        if cached_username:
+            identity = f"@{cached_username}" if not str(cached_username).startswith("@") else cached_username
+            return identity, connect_ms
         t0 = time.perf_counter()
         try:
             me = await asyncio.wait_for(adapter.invoke("getMe"), timeout=5.0)
@@ -168,9 +172,9 @@ class Shirdal:
             identity = f"@{username}" if username and not str(username).startswith("@") else username
             return identity, ping_ms
         except Exception:
-            return None, None
+            return None, connect_ms
 
-    async def _log_startup_info(self) -> str:
+    async def _log_startup_info(self, connect_ms: float | None = None) -> str:
         """Log version, identity, ping, and active acceleration extensions."""
         try:
             from importlib.metadata import version
@@ -180,7 +184,7 @@ class Shirdal:
 
         loop_label, json_label, crypto_label = self._detect_runtime_extensions()
         adapter_name = type(self.raw_adapter).__name__
-        identity, ping_ms = await self._probe_startup_ping()
+        identity, ping_ms = await self._probe_startup_ping(connect_ms=connect_ms)
 
         parts = [f"shirdal {shirdal_version}", adapter_name]
         if identity:
@@ -201,9 +205,11 @@ class Shirdal:
         return banner
 
     async def start(self) -> None:
+        t0 = time.perf_counter()
         await self.adapter.connect()
+        connect_ms = (time.perf_counter() - t0) * 1000.0
         self._running = True
-        await self._log_startup_info()
+        await self._log_startup_info(connect_ms=connect_ms)
         if self.plugins is not None:
             await self.plugins.load_all()
             if self._hot_reload:
