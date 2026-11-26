@@ -62,7 +62,18 @@ class TestPhase8MediaAdapters(unittest.IsolatedAsyncioTestCase):
             await serve_task
 
     async def test_lazy_adapter_imports_raise_helpful_error_when_missing(self) -> None:
-        with self.assertRaises(AdapterError):
-            TelethonAdapter("s", 123, "hash")
-        with self.assertRaises(AdapterError):
-            HydrogramAdapter("s", 123, "hash")
+        import builtins
+        from unittest.mock import patch
+
+        real_import = builtins.__import__
+
+        def _blocked_import(name: str, *args: object, **kwargs: object) -> object:
+            if name in {"telethon", "hydrogram"} or name.startswith(("telethon.", "hydrogram.")):
+                raise ImportError(f"Simulated missing {name}")
+            return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+        with patch("builtins.__import__", side_effect=_blocked_import):
+            with self.assertRaises(AdapterError):
+                TelethonAdapter("s", 123, "hash")
+            with self.assertRaises(AdapterError):
+                HydrogramAdapter("s", 123, "hash")

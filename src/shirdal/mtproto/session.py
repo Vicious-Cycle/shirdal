@@ -63,6 +63,13 @@ class MTProtoSessionState:
         self._last_msg_id = 0
         self._seq_no = 0
 
+    def sync_time_offset(self, server_msg_id: int) -> int:
+        """Synchronize local time_offset from a server msg_id."""
+        server_sec = server_msg_id >> 32
+        local_sec = int(time.time())
+        self.time_offset = server_sec - local_sec
+        return self.time_offset
+
     def save_sqlite(self, db_path: str | Path) -> None:
         p = Path(db_path)
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -229,6 +236,43 @@ class MTProtoWire:
         new_salt = r.read_long()
         self.state.server_salt = new_salt
         return bad_msg_id, error_code, new_salt
+
+    def handle_bad_msg_notification(self, body: bytes) -> tuple[int, int, int]:
+        """Parse bad_msg_notification#a7eff811 and return (bad_msg_id, bad_seqno, error_code)."""
+        r = TLReader(body)
+        cid = r.read_uint()
+        if cid != BAD_MSG_NOTIFICATION_ID:
+            raise MTProtoCryptoError(f"Expected bad_msg_notification, got 0x{cid:08x}")
+        bad_msg_id = r.read_long()
+        bad_seqno = r.read_int()
+        error_code = r.read_int()
+        if error_code in (16, 17):
+            # msg_id too low / too high: reset _last_msg_id
+            self.state._last_msg_id = 0
+        return bad_msg_id, bad_seqno, error_code
+
+    def handle_new_session_created(self, body: bytes) -> tuple[int, int, int]:
+        """Parse new_session_created#9ec20908, update server_salt, return (first_msg_id, unique_id, server_salt)."""
+        r = TLReader(body)
+        cid = r.read_uint()
+        if cid != 0x9EC20908:
+            raise MTProtoCryptoError(f"Expected new_session_created, got 0x{cid:08x}")
+        first_msg_id = r.read_long()
+        unique_id = r.read_long()
+        server_salt = r.read_long()
+        self.state.server_salt = server_salt
+        return first_msg_id, unique_id, server_salt
+
+    @staticmethod
+    def handle_pong(body: bytes) -> tuple[int, int]:
+        """Parse pong#347773c5 and return (msg_id, ping_id)."""
+        r = TLReader(body)
+        cid = r.read_uint()
+        if cid != 0x347773C5:
+            raise MTProtoCryptoError(f"Expected pong, got 0x{cid:08x}")
+        msg_id = r.read_long()
+        ping_id = r.read_long()
+        return msg_id, ping_id
 
     @staticmethod
     def unpack_rpc_result(body: bytes) -> tuple[int, bytes]:

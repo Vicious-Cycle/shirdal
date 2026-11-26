@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import struct
@@ -23,6 +24,7 @@ from shirdal.mtproto.auth import HandshakeSession, RSAPublicKey
 from shirdal.mtproto.crypto import AuthKey
 from shirdal.mtproto.files import FileTransferManager
 from shirdal.mtproto.session import (
+    BAD_MSG_NOTIFICATION_ID,
     BAD_SERVER_SALT_ID,
     MSG_CONTAINER_ID,
     RPC_RESULT_ID,
@@ -30,11 +32,37 @@ from shirdal.mtproto.session import (
     MTProtoSessionState,
     MTProtoWire,
 )
-from shirdal.mtproto.tl_codec import TLWriter
+from shirdal.mtproto.tl_codec import TLReader, TLWriter
+from shirdal.mtproto.tl_types import (
+    NEW_SESSION_CREATED_ID,
+    PONG_ID,
+    TELEGRAM_LAYER,
+    pack_auth_check_password,
+    pack_auth_send_code,
+    pack_auth_sign_in,
+    pack_delete_messages,
+    pack_edit_banned,
+    pack_edit_message,
+    pack_import_bot_authorization,
+    pack_invoke_with_layer,
+    pack_pin_message,
+    pack_ping,
+    pack_resolve_username,
+    pack_save_file_part,
+    pack_send_media_document,
+    pack_send_message,
+    pack_send_reaction,
+    pack_set_typing,
+    pack_updates_get_difference,
+    pack_updates_get_state,
+    parse_updates_payload,
+)
 from shirdal.mtproto.transport import MTProtoTransportError, TCPAbridgedTransport
 from shirdal.mtproto.updates import PeerCache, UpdateStateTracker
 
 _FLOOD_RE = re.compile(r"FLOOD_WAIT_(\d+)")
+_MIGRATE_RE = re.compile(r"(?:PHONE|USER|NETWORK)_MIGRATE_(\d+)")
+_LOG = logging.getLogger("shirdal.mtproto")
 
 TELEGRAM_DCS: dict[int, tuple[str, int]] = {
     1: ("149.154.175.53", 443),
@@ -95,10 +123,13 @@ class NativeMTProtoAdapter:
         self.files = FileTransferManager()
 
         self._connected = False
+        self._authorized = False
         self._queue: asyncio.Queue[UpdateEvent | None] = asyncio.Queue()
         self._pending_rpcs: dict[int, asyncio.Future[bytes]] = {}
         self._recv_task: asyncio.Task[Any] | None = None
+        self._ping_task: asyncio.Task[Any] | None = None
         self._next_local_msg_id = 1
+        self._ping_interval = 30.0
 
     @property
     def is_connected(self) -> bool:
@@ -131,10 +162,12 @@ class NativeMTProtoAdapter:
 
     async def disconnect(self) -> None:
         self._connected = False
-        if self._recv_task is not None:
-            self._recv_task.cancel()
-            await asyncio.gather(self._recv_task, return_exceptions=True)
-            self._recv_task = None
+        for task in (self._ping_task, self._recv_task):
+            if task is not None:
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+        self._ping_task = None
+        self._recv_task = None
         for fut in self._pending_rpcs.values():
             if not fut.done():
                 fut.set_exception(AdapterError("Disconnected before RPC completed."))
@@ -144,19 +177,37 @@ class NativeMTProtoAdapter:
             self.state.save_sqlite(self.session_path)
         await self._queue.put(None)
 
+    async def _ping_loop(self) -> None:
+        while self._connected:
+            await asyncio.sleep(self._ping_interval)
+            if not self._connected:
+                break
+            try:
+                ping_id = struct.unpack("<q", os.urandom(8))[0]
+                _, pkt = self.wire.pack_encrypted(pack_ping(ping_id), content_related=False)
+                await self.transport.send(pkt)
+            except Exception as exc:
+                _LOG.warning("MTProto keepalive ping failed: %s", exc)
+
     async def _recv_loop(self) -> None:
         while self._connected:
             try:
                 raw_pkt = await self.transport.recv()
-            except (MTProtoTransportError, asyncio.CancelledError):
+            except asyncio.CancelledError:
                 break
-            except Exception:
+            except MTProtoTransportError as exc:
+                _LOG.warning("MTProto transport error in recv_loop: %s", exc)
+                break
+            except Exception as exc:
+                _LOG.exception("Unexpected error in recv_loop: %s", exc)
                 break
 
             try:
                 msg_id, seq_no, body = self.wire.unpack_encrypted(raw_pkt, from_client=False)
+                self.state.sync_time_offset(msg_id)
                 await self._dispatch_wire_body(msg_id, seq_no, body)
-            except Exception:
+            except Exception as exc:
+                _LOG.warning("Failed to dispatch MTProto packet: %s", exc)
                 continue
 
     async def _dispatch_wire_body(self, msg_id: int, seq_no: int, body: bytes) -> None:
@@ -173,6 +224,19 @@ class NativeMTProtoAdapter:
             self.wire.handle_bad_server_salt(body)
             return
 
+        if cid == BAD_MSG_NOTIFICATION_ID:
+            bad_id, bad_seq, err_code = self.wire.handle_bad_msg_notification(body)
+            _LOG.warning("bad_msg_notification: msg_id=%s seq=%s code=%s", bad_id, bad_seq, err_code)
+            return
+
+        if cid == NEW_SESSION_CREATED_ID:
+            self.wire.handle_new_session_created(body)
+            return
+
+        if cid == PONG_ID:
+            self.wire.handle_pong(body)
+            return
+
         if cid == RPC_RESULT_ID:
             try:
                 req_id, res_bytes = self.wire.unpack_rpc_result(body)
@@ -180,7 +244,6 @@ class NativeMTProtoAdapter:
                 if fut and not fut.done():
                     fut.set_result(res_bytes)
             except MTProtoRPCError as exc:
-                # Extract req_msg_id directly from rpc_result header (bytes 4..12)
                 req_id = struct.unpack_from("<q", body, 4)[0]
                 fut = self._pending_rpcs.pop(req_id, None)
                 if fut and not fut.done():
@@ -196,7 +259,21 @@ class NativeMTProtoAdapter:
             _, ack_pkt = self.wire.pack_encrypted(ack_body, content_related=False)
             await self.transport.send(ack_pkt)
 
-        await self._queue.put(UpdateEvent(type=EventType.RAW, raw=body))
+        parsed_list = parse_updates_payload(body)
+        for parsed in parsed_list:
+            if parsed.kind == "new_message":
+                msg = MessageEvent(
+                    id=parsed.message_id,
+                    chat=ChatRef(id=parsed.chat_id, type=parsed.chat_type),
+                    sender=UserRef(id=parsed.sender_id, is_self=parsed.is_outgoing),
+                    text=parsed.text,
+                    is_outgoing=parsed.is_outgoing,
+                )
+                await self._queue.put(UpdateEvent(type=EventType.MESSAGE, message=msg, raw=body))
+            elif parsed.kind == "updates_too_long":
+                asyncio.create_task(self.sync_updates_state())
+            else:
+                await self._queue.put(UpdateEvent(type=EventType.RAW, raw=body))
 
     async def invoke_raw(self, tl_payload: bytes) -> bytes:
         if not self.is_connected:
@@ -228,6 +305,71 @@ class NativeMTProtoAdapter:
                 break
             yield ev
 
+    def _resolve_peer(self, chat_id: int | str) -> tuple[str, int, int]:
+        if isinstance(chat_id, str) and not chat_id.lstrip("-").isdigit():
+            rec = self.peers.get_by_username(chat_id)
+            if rec is not None:
+                return rec.peer_type, rec.peer_id, rec.access_hash
+            return "user", 0, 0
+        cid = int(chat_id)
+        if cid < 0:
+            s = str(cid)
+            if s.startswith("-100"):
+                real_id = int(s[4:])
+                rec = self.peers.get("channel", real_id)
+                return "channel", real_id, rec.access_hash if rec else 0
+            real_id = abs(cid)
+            return "chat", real_id, 0
+        rec = self.peers.get("user", cid)
+        return "user", cid, rec.access_hash if rec else 0
+
+    async def invoke_with_layer(self, query: bytes) -> bytes:
+        wrapped = pack_invoke_with_layer(
+            TELEGRAM_LAYER,
+            self.api_id,
+            self.device.device_model,
+            self.device.system_version,
+            self.device.app_version,
+            self.device.system_lang_code,
+            "",
+            self.device.lang_code,
+            query,
+        )
+        return await self.invoke_raw(wrapped)
+
+    async def send_code(self, phone_number: str) -> bytes:
+        return await self.invoke_with_layer(pack_auth_send_code(phone_number, self.api_id, self.api_hash))
+
+    async def sign_in(self, phone_number: str, phone_code_hash: str, code: str) -> bytes:
+        res = await self.invoke_raw(pack_auth_sign_in(phone_number, phone_code_hash, code))
+        self._authorized = True
+        return res
+
+    async def check_password(self, srp_id: int, A: bytes, M1: bytes) -> bytes:
+        res = await self.invoke_raw(pack_auth_check_password(srp_id, A, M1))
+        self._authorized = True
+        return res
+
+    async def import_bot_authorization(self, bot_token: str | None = None) -> bytes:
+        tok = bot_token or self.bot_token
+        if not tok:
+            raise AdapterError("bot_token is required for import_bot_authorization.")
+        res = await self.invoke_with_layer(pack_import_bot_authorization(self.api_id, self.api_hash, tok))
+        self._authorized = True
+        return res
+
+    async def sync_updates_state(self) -> None:
+        try:
+            if self.updates.pts == 0:
+                await self.invoke_raw(pack_updates_get_state())
+            else:
+                await self.invoke_raw(pack_updates_get_difference(self.updates.pts, self.updates.date, self.updates.qts))
+        except Exception as exc:
+            _LOG.warning("Failed to sync updates state: %s", exc)
+
+    async def resolve_username(self, username: str) -> bytes:
+        return await self.invoke_raw(pack_resolve_username(username))
+
     async def send_message(
         self,
         chat_id: int | str,
@@ -236,19 +378,22 @@ class NativeMTProtoAdapter:
         reply_to: int | None = None,
         parse_mode: str | None = "html",
     ) -> MessageEvent:
-        del parse_mode
-        cid = int(chat_id) if isinstance(chat_id, int) or str(chat_id).lstrip("-").isdigit() else 0
+        ptype, pid, ahash = self._resolve_peer(chat_id)
+        cid = int(chat_id) if isinstance(chat_id, int) or str(chat_id).lstrip("-").isdigit() else pid
         mid = self._next_local_msg_id
         self._next_local_msg_id += 1
-        w = TLWriter()
-        w.write_uint(0x983F9745)  # messages.sendMessage
-        w.write_long(cid)
-        w.write_string(text)
-        w.write_long(int.from_bytes(os.urandom(8), "little", signed=True))
-        await self.invoke_raw(w.to_bytes())
+        payload = pack_send_message(
+            ptype,
+            pid,
+            ahash,
+            text,
+            reply_to_msg_id=reply_to,
+            parse_mode=parse_mode,
+        )
+        await self.invoke_raw(payload)
         return MessageEvent(
             id=mid,
-            chat=ChatRef(id=cid),
+            chat=ChatRef(id=cid, type="channel" if ptype == "channel" else "private"),
             sender=UserRef(id=0, is_self=True),
             text=text,
             reply_to_id=reply_to,
@@ -263,14 +408,10 @@ class NativeMTProtoAdapter:
         *,
         parse_mode: str | None = "html",
     ) -> MessageEvent:
-        del parse_mode
-        cid = int(chat_id) if isinstance(chat_id, int) or str(chat_id).lstrip("-").isdigit() else 0
-        w = TLWriter()
-        w.write_uint(0xDFD14005)  # messages.editMessage
-        w.write_long(cid)
-        w.write_int(int(message_id))
-        w.write_string(text)
-        await self.invoke_raw(w.to_bytes())
+        ptype, pid, ahash = self._resolve_peer(chat_id)
+        cid = int(chat_id) if isinstance(chat_id, int) or str(chat_id).lstrip("-").isdigit() else pid
+        payload = pack_edit_message(ptype, pid, ahash, int(message_id), text, parse_mode=parse_mode)
+        await self.invoke_raw(payload)
         return MessageEvent(
             id=int(message_id),
             chat=ChatRef(id=cid),
@@ -286,14 +427,10 @@ class NativeMTProtoAdapter:
         *,
         revoke: bool = True,
     ) -> int:
-        del chat_id
         if not message_ids:
             return 0
-        w = TLWriter()
-        w.write_uint(0xE58E95D2)  # messages.deleteMessages
-        w.write_bool(revoke)
-        w.write_vector(message_ids, TLWriter.write_int)
-        await self.invoke_raw(w.to_bytes())
+        ptype, pid, ahash = self._resolve_peer(chat_id)
+        await self.invoke_raw(pack_delete_messages(ptype, pid, ahash, message_ids, revoke=revoke))
         return len(message_ids)
 
     async def send_media(
@@ -311,11 +448,33 @@ class NativeMTProtoAdapter:
         name = "upload.bin" if isinstance(media, bytes) else Path(media).name
 
         async def _save_part(file_id: int, part: int, total: int, chunk: bytes, is_big: bool) -> bool:
-            del file_id, part, total, chunk, is_big
+            del total, is_big
+            await self.invoke_raw(pack_save_file_part(file_id, part, chunk))
             return True
 
-        await self.files.upload_bytes(data, name, _save_part, progress=progress)
-        return await self.send_message(chat_id, f"[media:{name}]")
+        up = await self.files.upload_bytes(data, name, _save_part, progress=progress)
+        ptype, pid, ahash = self._resolve_peer(chat_id)
+        cid = int(chat_id) if isinstance(chat_id, int) or str(chat_id).lstrip("-").isdigit() else pid
+        mid = self._next_local_msg_id
+        self._next_local_msg_id += 1
+        await self.invoke_raw(
+            pack_send_media_document(
+                ptype,
+                pid,
+                ahash,
+                up.file_id,
+                up.parts,
+                name,
+                caption=caption or "",
+            )
+        )
+        return MessageEvent(
+            id=mid,
+            chat=ChatRef(id=cid),
+            sender=UserRef(id=0, is_self=True),
+            text=caption or "",
+            is_outgoing=True,
+        )
 
     async def send_album(
         self,
@@ -357,30 +516,43 @@ class NativeMTProtoAdapter:
     async def send_reaction(
         self, chat_id: int | str, message_id: int, emoji: str | None = None
     ) -> None:
-        await self.invoke("messages.sendReaction", chat_id=chat_id, message_id=message_id, emoji=emoji)
+        ptype, pid, ahash = self._resolve_peer(chat_id)
+        await self.invoke_raw(pack_send_reaction(ptype, pid, ahash, int(message_id), emoji or ""))
 
     async def pin_message(
         self, chat_id: int | str, message_id: int, *, silent: bool = False
     ) -> None:
-        await self.invoke("messages.updatePinnedMessage", chat_id=chat_id, message_id=message_id, silent=silent)
+        ptype, pid, ahash = self._resolve_peer(chat_id)
+        await self.invoke_raw(pack_pin_message(ptype, pid, ahash, int(message_id), silent=silent))
 
     async def send_chat_action(
         self, chat_id: int | str, action: ChatAction | str
     ) -> None:
-        await self.invoke("messages.setTyping", chat_id=chat_id, action=str(action))
+        ptype, pid, ahash = self._resolve_peer(chat_id)
+        await self.invoke_raw(pack_set_typing(ptype, pid, ahash, str(action)))
 
     async def ban_user(
         self, chat_id: int | str, user_id: int | str, *, until_date: int | None = None
     ) -> None:
-        await self.invoke("channels.editBanned", chat_id=chat_id, user_id=user_id, until_date=until_date)
+        _, cid, chash = self._resolve_peer(chat_id)
+        _, uid, uhash = self._resolve_peer(user_id)
+        await self.invoke_raw(
+            pack_edit_banned(cid, chash, uid, uhash, view_messages=True, until_date=until_date or 0)
+        )
 
     async def unban_user(self, chat_id: int | str, user_id: int | str) -> None:
-        await self.invoke("channels.editBanned", chat_id=chat_id, user_id=user_id, unban=True)
+        _, cid, chash = self._resolve_peer(chat_id)
+        _, uid, uhash = self._resolve_peer(user_id)
+        await self.invoke_raw(pack_edit_banned(cid, chash, uid, uhash, view_messages=False))
 
     async def mute_user(
         self, chat_id: int | str, user_id: int | str, *, until_date: int | None = None
     ) -> None:
-        await self.invoke("channels.editBanned", chat_id=chat_id, user_id=user_id, mute=True, until_date=until_date)
+        _, cid, chash = self._resolve_peer(chat_id)
+        _, uid, uhash = self._resolve_peer(user_id)
+        await self.invoke_raw(
+            pack_edit_banned(cid, chash, uid, uhash, send_messages=True, until_date=until_date or 0)
+        )
 
     async def kick_user(self, chat_id: int | str, user_id: int | str) -> None:
         await self.ban_user(chat_id, user_id)
