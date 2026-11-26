@@ -23,7 +23,7 @@
     On startup, Shirdal measures connection latency and prints active extensions:
     ```text
     Bot is running...
-    shirdal 1.0.13
+    shirdal 1.0.14
     adapter: BotAPIAdapter
     loop:    uvloop
     json:    msgspec

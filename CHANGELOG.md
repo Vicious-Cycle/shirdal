@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.14] - 2026-11-27
+
+### Added
+- `on_command` shortcut on `Shirdal` and `Router` (defaulting to incoming `/` commands, configurable for selfbots).
+- Flexible `on_message` decorator supporting both `@bot.on_message` and `@bot.on_message(filter)`.
+- `shirdal.rich` submodule re-exporting Rich Messages and keyboard builders.
+
+### Changed
+- Converted `shirdal.__init__` to PEP 562 lazy exports with `TYPE_CHECKING` for faster startup.
+- Made startup banner/ping probe non-blocking in `Shirdal.start()`.
+- Added `happy_eyeballs_delay=0.25` and `TCP_NODELAY` in `TCPAbridgedTransport.connect()`.
+- Switched `BotAPIAdapter` connection pool to thread-safe `queue.LifoQueue` and `_json_dumps` in multipart encoding.
+- Indexed `Dispatcher` routes by `EventType` for faster update routing.
+
 ## [1.0.13] - 2026-11-27
 
 ### Added
