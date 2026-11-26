@@ -62,9 +62,10 @@ class HybridAdapter:
         *,
         reply_to: int | None = None,
         parse_mode: str | None = "html",
+        **kwargs: Any,
     ) -> MessageEvent:
         return await self.primary.send_message(
-            chat_id, text, reply_to=reply_to, parse_mode=parse_mode
+            chat_id, text, reply_to=reply_to, parse_mode=parse_mode, **kwargs
         )
 
     async def edit_message(
@@ -74,9 +75,10 @@ class HybridAdapter:
         text: str,
         *,
         parse_mode: str | None = "html",
+        **kwargs: Any,
     ) -> MessageEvent:
         return await self.primary.edit_message(
-            chat_id, message_id, text, parse_mode=parse_mode
+            chat_id, message_id, text, parse_mode=parse_mode, **kwargs
         )
 
     async def delete_messages(

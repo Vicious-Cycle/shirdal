@@ -491,6 +491,7 @@ class NativeMTProtoAdapter:
             raise AdapterError("bot_token is required for import_bot_authorization.")
         res = await self.call(
             "auth.importBotAuthorization",
+            flags=0,
             api_id=self.api_id,
             api_hash=self.api_hash,
             bot_auth_token=tok,

@@ -8,7 +8,10 @@ import os
 import random
 import struct
 
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+try:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+except Exception:
+    Cipher = algorithms = modes = None
 
 try:
     import shircrypt as _shircrypt
@@ -20,7 +23,7 @@ from shirdal.mtproto.tl_codec import TLWriter
 
 def crypto_backend() -> str:
     """Return a human-readable name of the active AES-IGE backend."""
-    if _shircrypt is not None and _shircrypt.BACKEND == "rust":
+    if _shircrypt is not None and (_shircrypt.BACKEND == "rust" or Cipher is None):
         return f"shircrypt-rust (v{getattr(_shircrypt, '__version__', '?')})"
     return "cryptography (python fallback)"
 
@@ -35,7 +38,7 @@ def _xor16(a: bytes, b: bytes) -> bytes:
 
 def aes_ige_encrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
     """Encrypt data using AES-256-IGE (Infinite Garble Extension)."""
-    if _shircrypt is not None and _shircrypt.BACKEND == "rust":
+    if _shircrypt is not None and (_shircrypt.BACKEND == "rust" or Cipher is None):
         try:
             return _shircrypt.ige256_encrypt(data, key, iv)
         except ValueError as exc:
@@ -67,7 +70,7 @@ def aes_ige_encrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
 
 def aes_ige_decrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
     """Decrypt data using AES-256-IGE (Infinite Garble Extension)."""
-    if _shircrypt is not None and _shircrypt.BACKEND == "rust":
+    if _shircrypt is not None and (_shircrypt.BACKEND == "rust" or Cipher is None):
         try:
             return _shircrypt.ige256_decrypt(data, key, iv)
         except ValueError as exc:
@@ -99,7 +102,7 @@ def aes_ige_decrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
 
 def compute_msg_key(auth_key: bytes, padded_plaintext: bytes, *, from_client: bool = True) -> bytes:
     """Compute 16-byte MTProto 2.0 msg_key."""
-    if _shircrypt is not None and _shircrypt.BACKEND == "rust":
+    if _shircrypt is not None and (_shircrypt.BACKEND == "rust" or Cipher is None):
         try:
             return _shircrypt.compute_msg_key(auth_key, padded_plaintext, from_client=from_client)
         except ValueError as exc:
@@ -113,7 +116,7 @@ def compute_msg_key(auth_key: bytes, padded_plaintext: bytes, *, from_client: bo
 
 def kdf_mtproto2(auth_key: bytes, msg_key: bytes, *, from_client: bool = True) -> tuple[bytes, bytes]:
     """Derive 32-byte aes_key and 32-byte aes_iv using MTProto 2.0 KDF."""
-    if _shircrypt is not None and _shircrypt.BACKEND == "rust":
+    if _shircrypt is not None and (_shircrypt.BACKEND == "rust" or Cipher is None):
         try:
             return _shircrypt.mtproto2_kdf(auth_key, msg_key, from_client=from_client)
         except ValueError as exc:
@@ -151,7 +154,7 @@ class AuthKey:
         padded = inner_payload + os.urandom(pad_len)
         if (
             _shircrypt is not None
-            and _shircrypt.BACKEND == "rust"
+            and (_shircrypt.BACKEND == "rust" or Cipher is None)
             and hasattr(_shircrypt, "mtproto2_encrypt_packet")
         ):
             try:
@@ -179,7 +182,7 @@ class AuthKey:
             raise MTProtoCryptoError("Ciphertext length is not a multiple of 16")
         if (
             _shircrypt is not None
-            and _shircrypt.BACKEND == "rust"
+            and (_shircrypt.BACKEND == "rust" or Cipher is None)
             and hasattr(_shircrypt, "mtproto2_decrypt_packet")
         ):
             try:
