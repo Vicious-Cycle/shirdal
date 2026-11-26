@@ -1,31 +1,48 @@
 site_name: Shirdal
-site_description: A transport-agnostic, context-first Python framework for Telegram Bot API and MTProto 2.0.
+site_description: One Python framework for Telegram bots and userbots (Bot API 10.5 + Native MTProto 2.0)
+site_url: https://vicious-cycle.github.io/shirdal/
 repo_url: https://github.com/Vicious-Cycle/shirdal
 repo_name: Vicious-Cycle/shirdal
 
 theme:
   name: material
+  logo: assets/logo-icon.png
+  favicon: assets/logo-icon.png
   palette:
-    - scheme: default
-      primary: indigo
-      accent: blue
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep orange
+      accent: orange
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
-    - scheme: slate
-      primary: indigo
-      accent: blue
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep orange
+      accent: orange
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
   features:
-    - content.code.copy
+    - navigation.tabs
     - navigation.sections
     - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - tables
 
 nav:
+  - Home: index.md
   - Getting Started: getting-started.md
-  - Bot API 10.5 Features: bot-api.md
+  - Bot API: bot-api.md
   - Rich Messages: rich-messages.md
   - Native MTProto 2.0: native-mtproto.md
   - Webhook & Deployment: webhook-and-deployment.md
