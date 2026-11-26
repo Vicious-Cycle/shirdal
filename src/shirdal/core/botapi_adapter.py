@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import html
 import http.client
+import queue
 import json
 import mimetypes
 import ssl
@@ -418,7 +419,9 @@ class BotAPIAdapter:
         self._pool_size = max(1, int(pool_size))
         self._ssl_ctx = ssl.create_default_context() if self._scheme == "https" else None
 
-        self._conn_pool: list[http.client.HTTPConnection] = []
+        self._conn_pool: queue.LifoQueue[http.client.HTTPConnection] = queue.LifoQueue(
+            maxsize=self._pool_size
+        )
         self._pool_lock: asyncio.Lock | None = None
         self._poll_conn: http.client.HTTPConnection | None = None
 
@@ -467,7 +470,10 @@ class BotAPIAdapter:
         conn = dedicated_conn
         borrowed = False
         if conn is None:
-            conn = self._conn_pool.pop() if self._conn_pool else self._new_connection(timeout)
+            try:
+                conn = self._conn_pool.get_nowait()
+            except queue.Empty:
+                conn = self._new_connection(timeout)
             borrowed = True
 
         try:
@@ -487,10 +493,11 @@ class BotAPIAdapter:
         except (http.client.HTTPException, OSError, ValueError) as exc:
             raise AdapterError(f"Bot API request failed ({method}): {exc}") from exc
         finally:
-            if borrowed and len(self._conn_pool) < self._pool_size:
-                self._conn_pool.append(conn)
-            elif borrowed:
-                conn.close()
+            if borrowed:
+                try:
+                    self._conn_pool.put_nowait(conn)
+                except queue.Full:
+                    conn.close()
 
         if not data.get("ok", False):
             params = data.get("parameters") or {}
@@ -512,7 +519,7 @@ class BotAPIAdapter:
             if value is None:
                 continue
             val_str = (
-                json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+                _json_dumps(value).decode("utf-8")
                 if isinstance(value, (dict, list))
                 else str(value)
             )
@@ -583,8 +590,11 @@ class BotAPIAdapter:
             self._poll_conn.close()
             self._poll_conn = None
 
-        while self._conn_pool:
-            self._conn_pool.pop().close()
+        while True:
+            try:
+                self._conn_pool.get_nowait().close()
+            except queue.Empty:
+                break
 
         await self._queue.put(None)
 

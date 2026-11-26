@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import socket
 import struct
 
 
@@ -32,9 +33,15 @@ class TCPAbridgedTransport:
         if self.is_connected:
             return
         self._reader, self._writer = await asyncio.wait_for(
-            asyncio.open_connection(self.host, self.port),
+            asyncio.open_connection(self.host, self.port, happy_eyeballs_delay=0.25),
             timeout=self.timeout,
         )
+        sock = self._writer.get_extra_info("socket")
+        if sock is not None:
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except OSError:
+                pass
         self._header_sent = False
 
     async def close(self) -> None:

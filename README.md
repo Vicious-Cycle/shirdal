@@ -24,11 +24,11 @@ Write your handlers once and run them on the **Bot API**, a **Native MTProto 2.0
 
 ```python
 import os
-from shirdal import BotAPIAdapter, Context, F, Router, Shirdal, command, incoming
+from shirdal import BotAPIAdapter, Context, F, Router, Shirdal
 
 router = Router("main")
 
-@router.on(incoming & command("start", prefix="/"))
+@router.on_command("start")
 async def start(ctx: Context) -> None:
     reply_ctx = await ctx.ask("What is your name?", timeout=60, filters=F.text)
     await reply_ctx.reply(f"Hello <b>{reply_ctx.text}</b>!")

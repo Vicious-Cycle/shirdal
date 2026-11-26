@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, overload
 
 from shirdal.core.events import EventType
 from shirdal.engine.context import Context
 from shirdal.engine.dispatcher import ContextHandler, Dispatcher
-from shirdal.engine.filters import Filter
+from shirdal.engine.filters import Filter, command, incoming
 from shirdal.guard.middleware import Middleware, NextHandler
 
 
@@ -65,6 +65,20 @@ class Router:
 
         return decorator
 
+    def on_command(
+        self,
+        names: str | Sequence[str],
+        *,
+        prefix: str | Sequence[str] = "/",
+        case_sensitive: bool = False,
+        only_incoming: bool = True,
+    ) -> Callable[[ContextHandler], ContextHandler]:
+        """Register a command handler (defaults to incoming messages with '/' prefix)."""
+        cmd_filter: Filter = command(names, prefix=prefix, case_sensitive=case_sensitive)
+        if only_incoming:
+            cmd_filter = incoming & cmd_filter
+        return self.on(cmd_filter, event_type=EventType.NEW_MESSAGE)
+
     def on_callback(
         self, filter_obj: Filter | None = None
     ) -> Callable[[ContextHandler], ContextHandler]:
@@ -75,11 +89,24 @@ class Router:
     ) -> Callable[[ContextHandler], ContextHandler]:
         return self.on(filter_obj, event_type=EventType.EDIT_MESSAGE)
 
-    def on_message(self, func: ContextHandler) -> ContextHandler:
-        self._entries.append(
-            _RouterEntry(filter_obj=None, handler=func, event_type=EventType.NEW_MESSAGE)
-        )
-        return func
+    @overload
+    def on_message(self, target: ContextHandler) -> ContextHandler: ...
+
+    @overload
+    def on_message(
+        self, target: Filter | None = None
+    ) -> Callable[[ContextHandler], ContextHandler]: ...
+
+    def on_message(
+        self, target: ContextHandler | Filter | None = None
+    ) -> ContextHandler | Callable[[ContextHandler], ContextHandler]:
+        """Register a message handler, supporting both @router.on_message and @router.on_message(filter)."""
+        if callable(target) and not isinstance(target, Filter):
+            self._entries.append(
+                _RouterEntry(filter_obj=None, handler=target, event_type=EventType.NEW_MESSAGE)
+            )
+            return target
+        return self.on(target, event_type=EventType.NEW_MESSAGE)
 
     def attach_to(
         self,

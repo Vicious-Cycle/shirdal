@@ -4,14 +4,14 @@ import asyncio
 import logging
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, overload
 
 from shirdal.core.adapter import TransportAdapter
 from shirdal.core.events import EventType, UpdateEvent
 from shirdal.engine.dispatcher import ContextHandler, Dispatcher, ErrorHandler
-from shirdal.engine.filters import Filter
+from shirdal.engine.filters import Filter, command, incoming
 from shirdal.engine.fsm import FSMStorage, FSMStrategy
 from shirdal.engine.router import Router
 from shirdal.engine.scheduler import JobFunc, Scheduler
@@ -47,6 +47,7 @@ class Shirdal:
         self._startup_banner = startup_banner
         self._tasks: set[asyncio.Task[Any]] = set()
         self._heartbeat_task: asyncio.Task[Any] | None = None
+        self._startup_info_task: asyncio.Task[Any] | None = None
         self.dispatcher = Dispatcher(task_pool=self._tasks, storage=storage, fsm_strategy=fsm_strategy)
         self.scheduler = Scheduler(self)
         self._running = False
@@ -82,6 +83,20 @@ class Shirdal:
 
         return decorator
 
+    def on_command(
+        self,
+        names: str | Sequence[str],
+        *,
+        prefix: str | Sequence[str] = "/",
+        case_sensitive: bool = False,
+        only_incoming: bool = True,
+    ) -> Callable[[ContextHandler], ContextHandler]:
+        """Register a command handler (defaults to incoming messages with '/' prefix)."""
+        cmd_filter: Filter = command(names, prefix=prefix, case_sensitive=case_sensitive)
+        if only_incoming:
+            cmd_filter = incoming & cmd_filter
+        return self.on(cmd_filter, event_type=EventType.NEW_MESSAGE)
+
     def on_callback(
         self,
         filter_obj: Filter | None = None,
@@ -94,10 +109,23 @@ class Shirdal:
         """Register a handler for edited messages."""
         return self.on(filter_obj, event_type=EventType.EDIT_MESSAGE)
 
-    def on_message(self, func: ContextHandler) -> ContextHandler:
-        return self.dispatcher.register(
-            None, func, plugin_name=self._active_plugin_scope
-        )
+    @overload
+    def on_message(self, target: ContextHandler) -> ContextHandler: ...
+
+    @overload
+    def on_message(
+        self, target: Filter | None = None
+    ) -> Callable[[ContextHandler], ContextHandler]: ...
+
+    def on_message(
+        self, target: ContextHandler | Filter | None = None
+    ) -> ContextHandler | Callable[[ContextHandler], ContextHandler]:
+        """Register a message handler, supporting both @bot.on_message and @bot.on_message(filter)."""
+        if callable(target) and not isinstance(target, Filter):
+            return self.dispatcher.register(
+                None, target, plugin_name=self._active_plugin_scope
+            )
+        return self.on(target, event_type=EventType.NEW_MESSAGE)
 
     def on_error(self, func: ErrorHandler) -> ErrorHandler:
         """Register a global error handler receiving (ctx, exception)."""
@@ -263,7 +291,9 @@ class Shirdal:
         await self.adapter.connect()
         connect_ms = (time.perf_counter() - t0) * 1000.0
         self._running = True
-        await self._log_startup_info(connect_ms=connect_ms, _progressive=True)
+        self._startup_info_task = asyncio.create_task(
+            self._log_startup_info(connect_ms=connect_ms, _progressive=True)
+        )
         if self._startup_banner:
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop(60.0))
         if self.plugins is not None:
@@ -276,6 +306,11 @@ class Shirdal:
 
     async def stop(self) -> None:
         self._running = False
+        si = getattr(self, "_startup_info_task", None)
+        if si is not None:
+            si.cancel()
+            await asyncio.gather(si, return_exceptions=True)
+            self._startup_info_task = None
         hb = getattr(self, "_heartbeat_task", None)
         if hb is not None:
             hb.cancel()

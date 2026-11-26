@@ -35,11 +35,11 @@
 
 ```python
 import os
-from shirdal import BotAPIAdapter, Context, F, Router, Shirdal, command, incoming
+from shirdal import BotAPIAdapter, Context, F, Router, Shirdal
 
 router = Router("main")
 
-@router.on(incoming & command("start", prefix="/"))
+@router.on_command("start")
 async def start(ctx: Context) -> None:
     name_ctx = await ctx.ask("What is your name?", timeout=60, filters=F.text)
     await name_ctx.reply(f"Hello <b>{name_ctx.text}</b>!")

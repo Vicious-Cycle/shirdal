@@ -39,6 +39,7 @@ class Dispatcher:
         fsm_strategy: FSMStrategy = FSMStrategy.USER_IN_CHAT,
     ) -> None:
         self._routes: list[_Route] = []
+        self._routes_by_type: dict[EventType, list[_Route]] = {}
         self._middlewares: list[Middleware] = []
         self._error_handlers: list[ErrorHandler] = []
         self._task_pool = task_pool if task_pool is not None else set()
@@ -89,20 +90,26 @@ class Dispatcher:
         event_type: EventType = EventType.NEW_MESSAGE,
         plugin_name: str | None = None,
     ) -> ContextHandler:
-        self._routes.append(
-            _Route(
-                filter_obj=filter_obj,
-                handler=handler,
-                event_type=event_type,
-                plugin_name=plugin_name,
-                chain=self._build_chain(handler),
-            )
+        route = _Route(
+            filter_obj=filter_obj,
+            handler=handler,
+            event_type=event_type,
+            plugin_name=plugin_name,
+            chain=self._build_chain(handler),
         )
+        self._routes.append(route)
+        self._routes_by_type.setdefault(event_type, []).append(route)
         return handler
 
     def unregister_plugin(self, plugin_name: str) -> int:
         before = len(self._routes)
         self._routes = [r for r in self._routes if r.plugin_name != plugin_name]
+        for ev_type, bucket in list(self._routes_by_type.items()):
+            filtered = [r for r in bucket if r.plugin_name != plugin_name]
+            if filtered:
+                self._routes_by_type[ev_type] = filtered
+            else:
+                self._routes_by_type.pop(ev_type, None)
         return before - len(self._routes)
 
     def _build_chain(self, handler: ContextHandler) -> NextHandler:
@@ -173,9 +180,7 @@ class Dispatcher:
             return
 
         ctx: Context | None = None
-        for route in list(self._routes):
-            if route.event_type != update.type:
-                continue
+        for route in list(self._routes_by_type.get(update.type, ())):
             if ctx is None:
                 ctx = Context(
                     update.message,

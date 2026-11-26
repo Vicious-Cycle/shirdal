@@ -37,11 +37,11 @@
 
 ```python
 import os
-from shirdal import BotAPIAdapter, Context, F, Router, Shirdal, command, incoming
+from shirdal import BotAPIAdapter, Context, F, Router, Shirdal
 
 router = Router("main")
 
-@router.on(incoming & command("start", prefix="/"))
+@router.on_command("start")
 async def start(ctx: Context) -> None:
     name_ctx = await ctx.ask("What is your name?", timeout=60, filters=F.text)
     await name_ctx.reply(f"Hello <b>{name_ctx.text}</b>!")
@@ -136,7 +136,7 @@ async def admin_only(ctx, call_next):
         return
     await call_next(ctx)
 
-@admin_router.on(command("stats", prefix="/"))
+@admin_router.on_command("stats")
 async def stats(ctx):
     await ctx.reply("All systems operational.")
 

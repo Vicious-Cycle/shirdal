@@ -21,10 +21,10 @@ await ctx.reply_rich(
 
 ## Structured Block Builders
 
-Build `blocks` with typed helper functions instead of raw nested dictionaries:
+Build `blocks` with typed helper functions from `shirdal.rich` (or top-level `shirdal`) instead of raw nested dictionaries:
 
 ```python
-from shirdal import (
+from shirdal.rich import (
     button,
     rich_blockquote,
     rich_buttons,

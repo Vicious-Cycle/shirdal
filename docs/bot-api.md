@@ -7,7 +7,7 @@
 Use `button()` for inline keyboards and `reply_button()` for reply keyboards. Both accept `style` (`"primary"`, `"success"`, `"danger"` or `ButtonStyle`) and `icon` / `icon_custom_emoji_id`:
 
 ```python
-from shirdal import ButtonStyle, button, inline_keyboard, reply_button, reply_keyboard
+from shirdal.rich import ButtonStyle, button, inline_keyboard, reply_button, reply_keyboard
 
 ikb = inline_keyboard(
     [
