@@ -63,7 +63,7 @@ pip install shirdal
 Optional extras:
 
 ```bash
-pip install "shirdal[fast]"       # uvloop + msgspec
+pip install "shirdal[fast]"       # uvloop + msgspec + shircrypt
 pip install "shirdal[shircrypt]"  # Rust-accelerated AES-IGE
 pip install "shirdal[telethon]"   # Telethon adapter
 pip install "shirdal[hydrogram]"  # Hydrogram adapter

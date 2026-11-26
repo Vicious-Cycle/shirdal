@@ -49,7 +49,8 @@
 pip install shirdal              # نصب کامل همراه با Bot API 10.5 و Native MTProto 2.0
 
 # افزونه‌های اختیاری
-pip install "shirdal[fast]"      # بهینه‌سازی سرعت با uvloop و msgspec
+pip install "shirdal[fast]"      # بهینه‌سازی سرعت با uvloop، msgspec و shircrypt
+pip install "shirdal[shircrypt]" # رمزنگاری پرسرعت AES-IGE با Rust
 pip install "shirdal[telethon]"  # آداپتر Telethon
 pip install "shirdal[redis]"     # ذخیره‌ساز Redis
 ```

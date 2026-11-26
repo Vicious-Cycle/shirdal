@@ -35,6 +35,7 @@ shirdal = "shirdal.cli:main"
 fast = [
     "uvloop>=0.19.0; sys_platform != 'win32'",
     "msgspec>=0.18.6",
+    "shircrypt>=1.0.3",
 ]
 telethon = ["telethon>=1.36.0"]
 hydrogram = ["hydrogram>=0.2.0"]
@@ -50,6 +51,7 @@ all = [
     "redis>=5.0.0",
     "aiomysql>=0.2.0",
     "cryptography>=42.0.0",
+    "shircrypt>=1.0.3",
 ]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0", "ruff>=0.4.0", "mypy>=1.10.0"]
 
