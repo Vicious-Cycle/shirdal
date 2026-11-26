@@ -113,6 +113,37 @@ class TestBotAPIFeatures(unittest.TestCase):
 
         asyncio.run(run())
 
+    def test_set_my_settings(self) -> None:
+        async def run() -> None:
+            self.adapter._call.return_value = True
+            self.assertTrue(
+                await self.adapter.set_my_settings(
+                    can_join_groups=True,
+                    can_read_all_group_messages=False,
+                    is_inline=True,
+                    inline_query_placeholder="Search...",
+                    needs_inline_query_location=False,
+                    has_topics_enabled=True,
+                    has_topic_sidebar=True,
+                    callback_query_mode="inline",
+                )
+            )
+            self.adapter._call.assert_called_with(
+                "setMySettings",
+                {
+                    "can_join_groups": True,
+                    "can_read_all_group_messages": False,
+                    "is_inline": True,
+                    "needs_inline_query_location": False,
+                    "has_topics_enabled": True,
+                    "has_topic_sidebar": True,
+                    "inline_query_placeholder": "Search...",
+                    "callback_query_mode": "inline",
+                },
+            )
+
+        asyncio.run(run())
+
 
 if __name__ == "__main__":
     unittest.main()

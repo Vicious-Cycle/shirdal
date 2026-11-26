@@ -1600,14 +1600,30 @@ class BotAPIAdapter:
     async def set_my_settings(
         self,
         *,
+        can_join_groups: bool | None = None,
+        can_read_all_group_messages: bool | None = None,
+        is_inline: bool | None = None,
+        inline_query_placeholder: str | None = None,
+        needs_inline_query_location: bool | None = None,
+        has_topics_enabled: bool | None = None,
         has_topic_sidebar: bool | None = None,
         callback_query_mode: str | None = None,
         **extra: Any,
     ) -> bool:
         """Update bot settings via Bot API 10.5+ setMySettings."""
         payload: dict[str, Any] = dict(extra)
-        if has_topic_sidebar is not None:
-            payload["has_topic_sidebar"] = bool(has_topic_sidebar)
+        for key, val in (
+            ("can_join_groups", can_join_groups),
+            ("can_read_all_group_messages", can_read_all_group_messages),
+            ("is_inline", is_inline),
+            ("needs_inline_query_location", needs_inline_query_location),
+            ("has_topics_enabled", has_topics_enabled),
+            ("has_topic_sidebar", has_topic_sidebar),
+        ):
+            if val is not None:
+                payload[key] = bool(val)
+        if inline_query_placeholder is not None:
+            payload["inline_query_placeholder"] = str(inline_query_placeholder)
         if callback_query_mode is not None:
             payload["callback_query_mode"] = str(callback_query_mode)
         res = await self._call("setMySettings", payload)
