@@ -46,6 +46,7 @@ class Shirdal:
         self._use_uvloop = use_uvloop
         self._startup_banner = startup_banner
         self._tasks: set[asyncio.Task[Any]] = set()
+        self._heartbeat_task: asyncio.Task[Any] | None = None
         self.dispatcher = Dispatcher(task_pool=self._tasks, storage=storage, fsm_strategy=fsm_strategy)
         self.scheduler = Scheduler(self)
         self._running = False
@@ -264,7 +265,7 @@ class Shirdal:
         self._running = True
         await self._log_startup_info(connect_ms=connect_ms, _progressive=True)
         if self._startup_banner:
-            self._tasks.add(asyncio.create_task(self._heartbeat_loop(60.0)))
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop(60.0))
         if self.plugins is not None:
             await self.plugins.load_all()
             if self._hot_reload:
@@ -275,6 +276,11 @@ class Shirdal:
 
     async def stop(self) -> None:
         self._running = False
+        hb = getattr(self, "_heartbeat_task", None)
+        if hb is not None:
+            hb.cancel()
+            await asyncio.gather(hb, return_exceptions=True)
+            self._heartbeat_task = None
         await self.scheduler.stop()
         if self._watcher_task is not None:
             self._watcher_task.cancel()
