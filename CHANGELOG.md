@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.0.4] - 2026-11-26
+## [1.0.5] - 2026-11-26
 
 ### Added
 - **Native 5-Layer MTProto 2.0 Core (`shirdal.mtproto`):**
