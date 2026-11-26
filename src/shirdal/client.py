@@ -174,42 +174,97 @@ class Shirdal:
         except Exception:
             return None, connect_ms
 
-    async def _log_startup_info(self, connect_ms: float | None = None) -> str:
-        """Log version, identity, ping, and active acceleration extensions."""
+    def _emit_line(self, line: str) -> None:
+        if _LOG.isEnabledFor(logging.INFO):
+            _LOG.info(line)
+        elif self._startup_banner:
+            print(line, file=sys.stdout, flush=True)
+
+    @staticmethod
+    def _banner_palette() -> tuple[str, str, str, str, str, str]:
+        import os
+        use_color = hasattr(sys.stdout, "isatty") and sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+        if use_color and sys.platform == "win32":
+            os.system("")
+        if not use_color:
+            return "", "", "", "", "", ""
+        return "\033[1;33m", "\033[1;36m", "\033[1;32m", "\033[1m", "\033[2m", "\033[0m"
+
+    @staticmethod
+    def _pkg_version() -> str:
         try:
             from importlib.metadata import version
-            shirdal_version = version("shirdal")
+            return version("shirdal")
         except Exception:
-            shirdal_version = "unknown"
+            return "unknown"
 
+    async def _log_startup_info(
+        self, connect_ms: float | None = None, *, _progressive: bool = False
+    ) -> str:
+        """Log version, identity, ping, and active acceleration extensions."""
+        shirdal_version = self._pkg_version()
         loop_label, json_label, crypto_label = self._detect_runtime_extensions()
         adapter_name = type(self.raw_adapter).__name__
+        gold, teal, green, bold, dim, reset = self._banner_palette()
+
         identity, ping_ms = await self._probe_startup_ping(connect_ms=connect_ms)
-
-        parts = [f"shirdal {shirdal_version}", adapter_name]
+        lines = [
+            f"{gold}shirdal {shirdal_version}{reset}",
+            f"{dim}adapter:{reset} {teal}{adapter_name}{reset}",
+            f"{dim}loop:{reset}    {bold}{loop_label}{reset}",
+            f"{dim}json:{reset}    {bold}{json_label}{reset}",
+            f"{dim}crypto:{reset}  {green}{crypto_label}{reset}",
+        ]
         if identity:
-            parts.append(identity)
-        if ping_ms is not None:
-            parts.append(f"ping: {ping_ms:.1f}ms")
-        parts.extend([
-            f"loop: {loop_label}",
-            f"json: {json_label}",
-            f"crypto: {crypto_label}",
-        ])
-        banner = " | ".join(parts)
+            lines.append(f"{dim}bot:{reset}     {green}{identity}{reset}")
 
-        if _LOG.isEnabledFor(logging.INFO):
-            _LOG.info(banner)
-        elif self._startup_banner:
-            print(banner, file=sys.stdout, flush=True)
-        return banner
+        ping_line = f"{dim}ping:{reset}    {bold}{ping_ms:.1f}ms{reset}" if ping_ms is not None else None
+
+        for ln in lines:
+            self._emit_line(ln)
+
+        if ping_line is not None:
+            if _progressive and self._startup_banner and not _LOG.isEnabledFor(logging.INFO) and hasattr(sys.stdout, "isatty") and sys.stdout.isatty():
+                print(f"\n{ping_line}", end="", file=sys.stdout, flush=True)
+            else:
+                self._emit_line(ping_line)
+            lines.append(ping_line)
+
+        return "\n".join(lines)
+
+    async def _heartbeat_loop(self, interval: float = 60.0) -> None:
+        _, _, _, bold, dim, reset = self._banner_palette()
+        is_tty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty() and self._startup_banner and not _LOG.isEnabledFor(logging.INFO)
+        try:
+            while self._running:
+                await asyncio.sleep(interval)
+                if not self._running:
+                    break
+                try:
+                    _, ping_ms = await self._probe_startup_ping()
+                    if ping_ms is not None:
+                        line = f"{dim}ping:{reset}    {bold}{ping_ms:.1f}ms{reset}"
+                        if is_tty:
+                            print(f"\r\033[2K{line}", end="", file=sys.stdout, flush=True)
+                        else:
+                            self._emit_line(line)
+                except Exception:
+                    pass
+        except asyncio.CancelledError:
+            if is_tty:
+                print(file=sys.stdout, flush=True)
 
     async def start(self) -> None:
+        gold, _, _, _, _, reset = self._banner_palette()
+        self._emit_line(f"{gold}Bot is running...{reset}")
+
         t0 = time.perf_counter()
         await self.adapter.connect()
         connect_ms = (time.perf_counter() - t0) * 1000.0
         self._running = True
-        await self._log_startup_info(connect_ms=connect_ms)
+        await self._log_startup_info(connect_ms=connect_ms, _progressive=True)
+        if self._startup_banner:
+            self._tasks.add(asyncio.create_task(self._heartbeat_loop(60.0)))
         if self.plugins is not None:
             await self.plugins.load_all()
             if self._hot_reload:
