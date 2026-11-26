@@ -39,10 +39,14 @@ from shirdal.core.botapi_adapter import (
     rich_table,
     rich_thinking,
 )
+from shirdal.core.hybrid_adapter import HybridAdapter
 from shirdal.core.hydrogram_adapter import HydrogramAdapter
 from shirdal.core.mock_adapter import MockAdapter
 from shirdal.core.native_mtproto_adapter import NativeMTProtoAdapter
 from shirdal.core.telethon_adapter import TelethonAdapter
+from shirdal.engine.fsm import ANY_STATE, FSMStrategy
+from shirdal.engine.magic import F, MagicFilter
+from shirdal.engine.router import Router
 from shirdal.engine import (
     Context,
     DraftStream,
@@ -135,6 +139,12 @@ __all__ = [
     "RichDraftStream",
     "Dispatcher",
     "Filter",
+    "MagicFilter",
+    "F",
+    "Router",
+    "HybridAdapter",
+    "FSMStrategy",
+    "ANY_STATE",
     "State",
     "StatesGroup",
     "FSMStorage",

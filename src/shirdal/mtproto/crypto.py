@@ -99,6 +99,11 @@ def aes_ige_decrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
 
 def compute_msg_key(auth_key: bytes, padded_plaintext: bytes, *, from_client: bool = True) -> bytes:
     """Compute 16-byte MTProto 2.0 msg_key."""
+    if _shircrypt is not None and _shircrypt.BACKEND == "rust":
+        try:
+            return _shircrypt.compute_msg_key(auth_key, padded_plaintext, from_client=from_client)
+        except ValueError as exc:
+            raise MTProtoCryptoError(str(exc)) from exc
     if len(auth_key) != 256:
         raise MTProtoCryptoError(f"auth_key must be 256 bytes, got {len(auth_key)}")
     x = 0 if from_client else 8
@@ -108,6 +113,11 @@ def compute_msg_key(auth_key: bytes, padded_plaintext: bytes, *, from_client: bo
 
 def kdf_mtproto2(auth_key: bytes, msg_key: bytes, *, from_client: bool = True) -> tuple[bytes, bytes]:
     """Derive 32-byte aes_key and 32-byte aes_iv using MTProto 2.0 KDF."""
+    if _shircrypt is not None and _shircrypt.BACKEND == "rust":
+        try:
+            return _shircrypt.mtproto2_kdf(auth_key, msg_key, from_client=from_client)
+        except ValueError as exc:
+            raise MTProtoCryptoError(str(exc)) from exc
     if len(auth_key) != 256:
         raise MTProtoCryptoError(f"auth_key must be 256 bytes, got {len(auth_key)}")
     if len(msg_key) != 16:
@@ -139,6 +149,18 @@ class AuthKey:
         # Minimum 12 bytes of random padding; total must be divisible by 16
         pad_len = (16 - ((len(inner_payload) + 12) % 16)) % 16 + 12
         padded = inner_payload + os.urandom(pad_len)
+        if (
+            _shircrypt is not None
+            and _shircrypt.BACKEND == "rust"
+            and hasattr(_shircrypt, "mtproto2_encrypt_packet")
+        ):
+            try:
+                msg_key, encrypted = _shircrypt.mtproto2_encrypt_packet(
+                    self.key, padded, from_client=from_client
+                )
+                return self.key_id_bytes + msg_key + encrypted
+            except ValueError as exc:
+                raise MTProtoCryptoError(str(exc)) from exc
         msg_key = compute_msg_key(self.key, padded, from_client=from_client)
         aes_key, aes_iv = kdf_mtproto2(self.key, msg_key, from_client=from_client)
         encrypted = aes_ige_encrypt(padded, aes_key, aes_iv)
@@ -155,6 +177,17 @@ class AuthKey:
         ciphertext = packet[24:]
         if len(ciphertext) % 16 != 0:
             raise MTProtoCryptoError("Ciphertext length is not a multiple of 16")
+        if (
+            _shircrypt is not None
+            and _shircrypt.BACKEND == "rust"
+            and hasattr(_shircrypt, "mtproto2_decrypt_packet")
+        ):
+            try:
+                return _shircrypt.mtproto2_decrypt_packet(
+                    self.key, msg_key, ciphertext, from_client=from_client
+                )
+            except ValueError as exc:
+                raise MTProtoCryptoError(str(exc)) from exc
         aes_key, aes_iv = kdf_mtproto2(self.key, msg_key, from_client=from_client)
         padded = aes_ige_decrypt(ciphertext, aes_key, aes_iv)
         expected_msg_key = compute_msg_key(self.key, padded, from_client=from_client)

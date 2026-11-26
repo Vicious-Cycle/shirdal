@@ -1,9 +1,36 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Protocol, runtime_checkable
 
 FSMKey = tuple[int, int]  # (chat_id, user_id)
+ANY_STATE = "*"
+
+
+class FSMStrategy(str, Enum):
+    """Keying strategy for FSM state isolation."""
+
+    USER_IN_CHAT = "user_in_chat"
+    CHAT = "chat"
+    GLOBAL_USER = "global_user"
+    USER_IN_TOPIC = "user_in_topic"
+
+
+def resolve_fsm_key(
+    strategy: FSMStrategy,
+    chat_id: int,
+    user_id: int,
+    topic_id: int | None = None,
+) -> FSMKey:
+    if strategy == FSMStrategy.CHAT:
+        return (chat_id, 0)
+    if strategy == FSMStrategy.GLOBAL_USER:
+        return (0, user_id)
+    if strategy == FSMStrategy.USER_IN_TOPIC and topic_id is not None:
+        return (chat_id ^ (topic_id << 20), user_id)
+    return (chat_id, user_id)
 
 
 @dataclass(slots=True, frozen=True)
@@ -40,29 +67,52 @@ class FSMStorage(Protocol):
 class _Record:
     state: str | None = None
     data: dict[str, Any] = field(default_factory=dict)
+    expires_at: float | None = None
 
 
 class MemoryStorage:
-    """Fast in-memory FSM storage keyed by (chat_id, user_id)."""
+    """Fast in-memory FSM storage with optional per-key TTL expiration."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, ttl: float | None = None) -> None:
         self._records: dict[FSMKey, _Record] = {}
+        self.ttl = ttl
+
+    def _get_valid(self, key: FSMKey) -> _Record | None:
+        rec = self._records.get(key)
+        if rec is None:
+            return None
+        if rec.expires_at is not None and rec.expires_at <= time.monotonic():
+            self._records.pop(key, None)
+            return None
+        return rec
+
+    def _touch(self, rec: _Record) -> None:
+        if self.ttl is not None:
+            rec.expires_at = time.monotonic() + self.ttl
 
     async def get_state(self, key: FSMKey) -> str | None:
-        rec = self._records.get(key)
+        rec = self._get_valid(key)
         return rec.state if rec else None
 
     async def set_state(self, key: FSMKey, state: str | None) -> None:
-        rec = self._records.setdefault(key, _Record())
+        rec = self._get_valid(key)
+        if rec is None:
+            rec = _Record()
+            self._records[key] = rec
         rec.state = state
+        self._touch(rec)
 
     async def get_data(self, key: FSMKey) -> dict[str, Any]:
-        rec = self._records.get(key)
+        rec = self._get_valid(key)
         return dict(rec.data) if rec else {}
 
     async def update_data(self, key: FSMKey, **kwargs: Any) -> dict[str, Any]:
-        rec = self._records.setdefault(key, _Record())
+        rec = self._get_valid(key)
+        if rec is None:
+            rec = _Record()
+            self._records[key] = rec
         rec.data.update(kwargs)
+        self._touch(rec)
         return dict(rec.data)
 
     async def clear(self, key: FSMKey) -> None:

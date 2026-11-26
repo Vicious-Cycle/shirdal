@@ -11,7 +11,7 @@ from typing import Any, AsyncIterator
 
 from shirdal.core.adapter import TransportAdapter
 from shirdal.core.events import ChatAction, ChatRef, MessageEvent
-from shirdal.engine.fsm import FSMContext, FSMStorage, MemoryStorage
+from shirdal.engine.fsm import FSMContext, FSMStorage, FSMStrategy, MemoryStorage, resolve_fsm_key
 from shirdal.engine.media import ProgressCallback, ProgressTracker
 
 
@@ -205,6 +205,7 @@ class Context:
         "arg_str",
         "match",
         "_task_pool",
+        "_dispatcher",
     )
 
     def __init__(
@@ -214,17 +215,45 @@ class Context:
         *,
         task_pool: set[asyncio.Task[Any]] | None = None,
         storage: FSMStorage | None = None,
+        fsm_strategy: FSMStrategy = FSMStrategy.USER_IN_CHAT,
+        dispatcher: Any = None,
     ) -> None:
         self.message = message
         self.adapter = adapter
         fsm_storage = storage if storage is not None else MemoryStorage()
         sender_id = message.sender.id if message.sender else 0
-        self.state = FSMContext(fsm_storage, (message.chat.id, sender_id))
+        topic_id = getattr(message, "message_thread_id", None)
+        fsm_key = resolve_fsm_key(fsm_strategy, message.chat.id, sender_id, topic_id=topic_id)
+        self.state = FSMContext(fsm_storage, fsm_key)
         self.command: str | None = None
         self.args: list[str] = []
         self.arg_str: str = ""
         self.match: re.Match[str] | None = None
         self._task_pool = task_pool
+        self._dispatcher = dispatcher
+
+    async def ask(
+        self,
+        prompt: str | None = None,
+        *,
+        timeout: float | None = 60.0,
+        filters: Any = None,
+        parse_mode: str | None = "html",
+        **reply_kwargs: Any,
+    ) -> Context:
+        """Send an optional prompt and await the next matching reply from this user in this chat."""
+        if self._dispatcher is None:
+            raise RuntimeError("ctx.ask() requires a Dispatcher-managed Context")
+        if prompt is not None:
+            await self.reply(prompt, parse_mode=parse_mode, **reply_kwargs)
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future[Context] = loop.create_future()
+        user_id = self.sender_id or 0
+        self._dispatcher.register_waiter(self.chat_id, user_id, fut, filters)
+        try:
+            return await asyncio.wait_for(fut, timeout=timeout)
+        finally:
+            self._dispatcher.cancel_waiter(self.chat_id, user_id, fut)
 
     @property
     def id(self) -> int:

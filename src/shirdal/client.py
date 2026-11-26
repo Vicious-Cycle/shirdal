@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -10,7 +12,8 @@ from shirdal.core.adapter import TransportAdapter
 from shirdal.core.events import EventType, UpdateEvent
 from shirdal.engine.dispatcher import ContextHandler, Dispatcher, ErrorHandler
 from shirdal.engine.filters import Filter
-from shirdal.engine.fsm import FSMStorage
+from shirdal.engine.fsm import FSMStorage, FSMStrategy
+from shirdal.engine.router import Router
 from shirdal.engine.scheduler import JobFunc, Scheduler
 from shirdal.guard.antiflood import AntiFloodAdapter, AntiFloodConfig
 from shirdal.guard.middleware import Middleware
@@ -33,14 +36,17 @@ class Shirdal:
         hot_reload: bool = False,
         reload_interval: float = 1.0,
         storage: FSMStorage | None = None,
+        fsm_strategy: FSMStrategy = FSMStrategy.USER_IN_CHAT,
+        startup_banner: bool = True,
     ) -> None:
         self.raw_adapter = adapter
         self.adapter: TransportAdapter = (
             AntiFloodAdapter(adapter, config=flood_config) if anti_flood else adapter
         )
         self._use_uvloop = use_uvloop
+        self._startup_banner = startup_banner
         self._tasks: set[asyncio.Task[Any]] = set()
-        self.dispatcher = Dispatcher(task_pool=self._tasks, storage=storage)
+        self.dispatcher = Dispatcher(task_pool=self._tasks, storage=storage, fsm_strategy=fsm_strategy)
         self.scheduler = Scheduler(self)
         self._running = False
         self._active_plugin_scope: str | None = None
@@ -54,6 +60,10 @@ class Shirdal:
 
     def use(self, middleware: Middleware) -> Middleware:
         return self.dispatcher.add_middleware(middleware)
+
+    def include_router(self, router: Router) -> Router:
+        router.attach_to(self.dispatcher, plugin_name=self._active_plugin_scope)
+        return router
 
     def on(
         self,
@@ -117,26 +127,83 @@ class Shirdal:
         return self.scheduler.schedule_once(delay, func)
 
     @staticmethod
-    def _log_startup_info() -> None:
-        """Log the shirdal version and the active crypto backend (best effort)."""
+    def _detect_runtime_extensions() -> tuple[str, str, str]:
+        try:
+            loop_name = type(asyncio.get_running_loop()).__module__.split(".")[0]
+            if "uvloop" in loop_name:
+                loop_label = "uvloop"
+            else:
+                loop_label = "asyncio"
+        except Exception:
+            loop_label = "asyncio"
+
+        try:
+            import msgspec  # type: ignore[import-not-found]  # noqa: F401
+            json_label = "msgspec"
+        except ImportError:
+            json_label = "json"
+
+        try:
+            from shirdal.mtproto.crypto import crypto_backend
+            crypto_label = crypto_backend()
+        except Exception:
+            crypto_label = "unavailable"
+
+        return loop_label, json_label, crypto_label
+
+    async def _probe_startup_ping(self) -> tuple[str | None, float | None]:
+        """Measure initial API latency (ms) and identity if supported by the adapter."""
+        adapter = self.raw_adapter
+        if type(adapter).__name__ == "MockAdapter":
+            return None, None
+        t0 = time.perf_counter()
+        try:
+            me = await asyncio.wait_for(adapter.invoke("getMe"), timeout=5.0)
+            ping_ms = (time.perf_counter() - t0) * 1000.0
+            username: str | None = None
+            if isinstance(me, dict):
+                username = me.get("username") or me.get("first_name")
+            else:
+                username = getattr(me, "username", None) or getattr(me, "first_name", None)
+            identity = f"@{username}" if username and not str(username).startswith("@") else username
+            return identity, ping_ms
+        except Exception:
+            return None, None
+
+    async def _log_startup_info(self) -> str:
+        """Log version, identity, ping, and active acceleration extensions."""
         try:
             from importlib.metadata import version
-
             shirdal_version = version("shirdal")
         except Exception:
             shirdal_version = "unknown"
-        try:
-            from shirdal.mtproto.crypto import crypto_backend
 
-            backend = crypto_backend()
-        except Exception:
-            backend = "not loaded (MTProto crypto unavailable)"
-        _LOG.info("shirdal %s started | crypto backend: %s", shirdal_version, backend)
+        loop_label, json_label, crypto_label = self._detect_runtime_extensions()
+        adapter_name = type(self.raw_adapter).__name__
+        identity, ping_ms = await self._probe_startup_ping()
+
+        parts = [f"shirdal {shirdal_version}", adapter_name]
+        if identity:
+            parts.append(identity)
+        if ping_ms is not None:
+            parts.append(f"ping: {ping_ms:.1f}ms")
+        parts.extend([
+            f"loop: {loop_label}",
+            f"json: {json_label}",
+            f"crypto: {crypto_label}",
+        ])
+        banner = " | ".join(parts)
+
+        if _LOG.isEnabledFor(logging.INFO):
+            _LOG.info(banner)
+        elif self._startup_banner:
+            print(banner, file=sys.stdout, flush=True)
+        return banner
 
     async def start(self) -> None:
         await self.adapter.connect()
         self._running = True
-        self._log_startup_info()
+        await self._log_startup_info()
         if self.plugins is not None:
             await self.plugins.load_all()
             if self._hot_reload:

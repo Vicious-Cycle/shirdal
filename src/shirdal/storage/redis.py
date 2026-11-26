@@ -16,8 +16,10 @@ class RedisStorage:
         *,
         prefix: str = "shirdal:",
         client: Any = None,
+        fsm_ttl: int | None = None,
     ) -> None:
         self.prefix = prefix
+        self.fsm_ttl = fsm_ttl
         if client is not None:
             self._redis = client
         else:
@@ -43,7 +45,7 @@ class RedisStorage:
 
     async def _save_fsm(self, key: FSMKey, payload: dict[str, Any]) -> None:
         await self._redis.set(
-            self._fsm_key(key), json.dumps(payload, ensure_ascii=False)
+            self._fsm_key(key), json.dumps(payload, ensure_ascii=False), ex=self.fsm_ttl
         )
 
     async def get_state(self, key: FSMKey) -> str | None:

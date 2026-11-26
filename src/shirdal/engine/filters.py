@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
 from shirdal.engine.context import Context
-from shirdal.engine.fsm import State
+from shirdal.engine.fsm import ANY_STATE, State
 
 
 class Filter(ABC):
@@ -114,14 +114,20 @@ class RegexFilter(Filter):
 
 
 class StateFilter(Filter):
-    """Matches the current FSM state for (chat_id, sender_id)."""
+    """Matches the current FSM state against one or more targets (or '*' / ANY_STATE)."""
 
-    def __init__(self, target: State | str | None) -> None:
-        self.target = target.name if isinstance(target, State) else target
+    def __init__(self, *targets: State | str | None) -> None:
+        if not targets:
+            targets = (None,)
+        self.targets: tuple[str | None, ...] = tuple(
+            t.name if isinstance(t, State) else t for t in targets
+        )
 
     async def check(self, ctx: Context) -> bool:
         current = await ctx.state.get()
-        return current == self.target
+        if ANY_STATE in self.targets:
+            return current is not None
+        return current in self.targets
 
 
 def command(
@@ -137,8 +143,8 @@ def regex(pattern: str, flags: int = 0) -> RegexFilter:
     return RegexFilter(pattern, flags=flags)
 
 
-def state(target: State | str | None) -> StateFilter:
-    return StateFilter(target)
+def state(*targets: State | str | None) -> StateFilter:
+    return StateFilter(*targets)
 
 
 text: Filter = _PredicateFilter(lambda ctx: bool(ctx.text))
