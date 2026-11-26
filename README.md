@@ -2,8 +2,6 @@
 
 <img src="docs/assets/logo-banner.png" alt="Shirdal Logo" width="480" />
 
-# Shirdal
-
 **One Python framework for Telegram bots and userbots.**
 Write your handlers once, run them on the Bot API or on a native MTProto 2.0 client.
 
