@@ -11,7 +11,12 @@ EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples" / "quickstart
 
 class TestPhase12Release(unittest.IsolatedAsyncioTestCase):
     def test_version_is_1_0_0_and_examples_parse(self) -> None:
-        self.assertEqual(shirdal.__version__, "1.0.5")
+        # Ensure __version__ matches pyproject.toml dynamically
+        import re
+        pyproject = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text()
+        m = re.search(r'version\s*=\s*"([^"]+)"', pyproject)
+        self.assertIsNotNone(m, "version not found in pyproject.toml")
+        self.assertEqual(shirdal.__version__, m.group(1))
         for py_file in EXAMPLES_DIR.rglob("*.py"):
             ast.parse(py_file.read_text(encoding="utf-8"))
 
