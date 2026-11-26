@@ -19,6 +19,7 @@ from shirdal import (
 )
 from shirdal.mtproto import (
     BAD_SERVER_SALT_ID,
+    MSGS_ACK_ID,
     RPC_ERROR_ID,
     RPC_RESULT_ID,
     AuthKey,
@@ -71,6 +72,8 @@ class TestPhase30NativeMTProtoAdapter(unittest.IsolatedAsyncioTestCase):
                     _seq = r.read_int()
                     msg_len = r.read_int()
                     body = r.read_raw(msg_len)
+                    if struct.unpack_from("<I", body, 0)[0] == MSGS_ACK_ID:
+                        continue  # client acks are service messages, not RPCs
                     call_count += 1
 
                     if call_count == 1:
