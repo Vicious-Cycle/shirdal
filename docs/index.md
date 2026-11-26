@@ -19,7 +19,17 @@
 
 !!! tip "Startup Diagnostics"
     On startup, Shirdal measures connection latency and prints active extensions:
-    `shirdal 1.0.x | BotAPIAdapter | @MyBot | ping: 38.4ms | loop: uvloop | json: msgspec | crypto: shircrypt-rust (v1.0.3)`
+    ```text
+    Bot is running...
+    shirdal 1.0.13
+    adapter: BotAPIAdapter
+    loop:    uvloop
+    json:    msgspec
+    crypto:  shircrypt-rust (v1.0.6)
+    bot:     @MyBot
+
+    ping:    38.4ms
+    ```
 
 ## Simple Usage
 

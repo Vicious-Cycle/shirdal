@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.13] - 2026-11-27
+
+### Added
+- **Minimal Progressive Startup Banner:** prints `Bot is running...` immediately, followed by a clean single-item-per-line diagnostic card and an in-place live `ping:` line that refreshes every 60 seconds.
+
+### Fixed
+- **Native MTProto Bot Auth:** pass required `flags=0` to `auth.importBotAuthorization`.
+- **HybridAdapter:** forward `**kwargs` (such as `reply_markup`) in `send_message` and `edit_message`.
+- **Crypto Fallback:** guard `cryptography` import so `shircrypt` fallback works even when `_cffi_backend` is unavailable.
+
 ## [1.0.7] - 2026-11-26
 
 ### Fixed
