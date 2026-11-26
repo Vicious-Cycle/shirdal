@@ -173,8 +173,13 @@ class Shirdal:
             json_label = "json"
 
         try:
-            from shirdal.mtproto.crypto import crypto_backend
-            crypto_label = crypto_backend()
+            import sys
+
+            crypto_mod = sys.modules.get("shirdal.mtproto.crypto")
+            if crypto_mod is not None:
+                crypto_label = crypto_mod.crypto_backend()
+            else:
+                crypto_label = "not loaded"
         except Exception:
             crypto_label = "unavailable"
 

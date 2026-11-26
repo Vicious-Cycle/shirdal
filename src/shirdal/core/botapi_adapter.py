@@ -399,6 +399,7 @@ class BotAPIAdapter:
         poll_timeout: int = 30,
         allowed_updates: Sequence[str] | None = None,
         pool_size: int = 4,
+        fetch_me: bool = True,
     ) -> None:
         token = bot_token.strip()
         if not token or ":" not in token:
@@ -429,6 +430,7 @@ class BotAPIAdapter:
         self._poller_task: asyncio.Task[Any] | None = None
         self._connected = False
         self._offset = 0
+        self._fetch_me = fetch_me
         self.bot_id: int | None = None
         self.bot_username: str | None = None
 
@@ -568,10 +570,11 @@ class BotAPIAdapter:
     async def connect(self) -> None:
         if self._connected:
             return
-        me = await self._call("getMe")
-        if isinstance(me, dict):
-            self.bot_id = int(me.get("id", 0)) or None
-            self.bot_username = me.get("username")
+        if self._fetch_me:
+            me = await self._call("getMe")
+            if isinstance(me, dict):
+                self.bot_id = int(me.get("id", 0)) or None
+                self.bot_username = me.get("username")
         self._connected = True
         self._poll_conn = self._new_connection(float(self._poll_timeout + 10))
         self._poller_task = asyncio.create_task(self._poll_loop())
