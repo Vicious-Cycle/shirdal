@@ -1,5 +1,7 @@
 <div align="center" dir="rtl">
 
+<img src="docs/assets/logo-banner.png" alt="لوگوی شیر‌دال" width="480" />
+
 # Shirdal (شیر‌دال)
 
 **فریم‌ورک سریع، ماژولار و Context-First پایتون برای تلگرام — مجهز به موتور داخلی Bot API 10.5 و هستهٔ بومی MTProto 2.0**

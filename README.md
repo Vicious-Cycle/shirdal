@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/logo-banner.png" alt="Shirdal Logo" width="480" />
+
 # Shirdal
 
 **One Python framework for Telegram bots and userbots.**
