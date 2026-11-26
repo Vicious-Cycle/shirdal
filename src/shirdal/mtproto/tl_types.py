@@ -1,4 +1,4 @@
-"""Core Telegram Layer 195 TL constructors, serializers, and update/peer parsers."""
+"""Hand-written TL packers (legacy; IDs predate Layer 222). NativeMTProtoAdapter now uses shirdal.mtproto.tl_runtime."""
 
 from __future__ import annotations
 
