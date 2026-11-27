@@ -126,6 +126,10 @@ class TestPhase30NativeMTProtoAdapter(unittest.IsolatedAsyncioTestCase):
             auth_key=auth_key,
             server_salt=salt,
         )
+        async def _no_sync() -> None:  # background updates.getState would shift the scripted RPC order
+            return None
+
+        adapter._initial_sync = _no_sync
         bot = Shirdal(adapter, use_uvloop=False, anti_flood=False)
         replies: list[str] = []
 

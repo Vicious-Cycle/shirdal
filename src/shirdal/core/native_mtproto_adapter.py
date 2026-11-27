@@ -799,6 +799,43 @@ class NativeMTProtoAdapter:
         except Exception as exc:  # noqa: BLE001
             _LOG.debug("getDialogs failed: %s", exc)
 
+    async def _find_peer_in_dialogs(self, ptype: str, pid: int, *, max_pages: int = 60) -> bool:
+        """Page through all dialogs (100 per page) until ``(ptype, pid)`` is cached.
+
+        ``_load_dialogs`` only reads the first 200 dialogs once; peers beyond that
+        never got an ``access_hash`` and every request failed with ``PEER_ID_INVALID``.
+        """
+        offset_date, offset_id = 0, 0
+        offset_peer: dict[str, Any] = {"_": "inputPeerEmpty"}
+        for _ in range(max_pages):
+            res = await self.call(
+                "messages.getDialogs",
+                offset_date=offset_date,
+                offset_id=offset_id,
+                offset_peer=offset_peer,
+                limit=100,
+                hash=0,
+            )
+            if not isinstance(res, dict):
+                return False
+            self._cache_entities(res.get("users", []), res.get("chats", []))
+            if self.peers.get(ptype, pid) is not None:
+                return True
+            dialogs = res.get("dialogs") or []
+            if len(dialogs) < 100:
+                return False
+            last = dialogs[-1]
+            top = int(last.get("top_message", 0))
+            offset_id = top
+            offset_peer = self._peer_to_input(last["peer"])
+            offset_date = 0
+            for m in res.get("messages") or []:
+                if isinstance(m, dict) and int(m.get("id", -1)) == top:
+                    offset_date = int(m.get("date", 0))
+                    break
+            await asyncio.sleep(0.4)
+        return False
+
     async def resolve_username(self, username: str) -> TLObject:
         res = await self.call("contacts.resolveUsername", username=username.lstrip("@"))
         self._cache_entities(res.get("users", []), res.get("chats", []))
@@ -826,6 +863,16 @@ class NativeMTProtoAdapter:
         if rec is None:
             await self._load_dialogs()
             rec = self.peers.get(ptype, pid)
+        if rec is None:
+            tried = self.__dict__.setdefault("_deep_peer_tried", {})
+            now = time.monotonic()
+            if now - tried.get((ptype, pid), -1e9) > 300:
+                tried[(ptype, pid)] = now
+                try:
+                    await self._find_peer_in_dialogs(ptype, pid)
+                except FloodWaitError:
+                    pass
+                rec = self.peers.get(ptype, pid)
         if rec is None:
             _LOG.warning(
                 "No access_hash cached for peer %s; trying access_hash=0 "

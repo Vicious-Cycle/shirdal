@@ -19,6 +19,11 @@ class FloodWaitError(AdapterError):
         self.seconds = float(seconds)
         super().__init__(message or f"FloodWait: retry after {self.seconds}s")
 
+    @property
+    def retry_after(self) -> float:
+        """Alias of :attr:`seconds` (Bot API / Telethon-style name)."""
+        return self.seconds
+
 
 @dataclass(slots=True, frozen=True)
 class DeviceProfile:

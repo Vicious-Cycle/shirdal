@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.16] - 2026-11-27
+
+### Fixed
+- **Native MTProto peers:** users/chats outside the first 200 dialogs never received an `access_hash` and failed with `PEER_ID_INVALID`. `_input_peer` now pages through all dialogs (`_find_peer_in_dialogs`) with a 5-minute per-peer cooldown.
+
+### Added
+- `FloodWaitError.retry_after` property (alias of `.seconds`).
+
 ## [1.0.14] - 2026-11-27
 
 ### Added

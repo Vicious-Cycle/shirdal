@@ -206,6 +206,11 @@ class TestNativeAdapterFixes(unittest.IsolatedAsyncioTestCase):
             return [rpc_result(req_id, serialize("boolTrue"))]
 
         self.srv.handler = handler
+
+        async def _no_sync() -> None:  # background updates.getState would add extra requests
+            return None
+
+        self.adapter._initial_sync = _no_sync
         await self.adapter.connect()
         self.assertIs(await self.adapter.call("help.getConfig"), True)
         self.assertEqual(len(self.srv.requests), 2)
