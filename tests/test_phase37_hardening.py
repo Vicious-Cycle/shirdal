@@ -103,3 +103,26 @@ def test_gap_during_running_sync_triggers_rerun():
         assert calls == 2
 
     asyncio.run(run())
+
+
+def test_layer_234_difference_types_roundtrip():
+    """Layer 234 added a leading `flags` + optional `topics` to updates.difference*."""
+    from shirdal.mtproto.tl_runtime import api_layer, get_schema
+
+    assert api_layer() >= 234
+    s = get_schema()
+    st = {"_": "updates.state", "pts": 5, "qts": 0, "date": 1, "seq": 2, "unread_count": 0}
+    base = {"new_messages": [], "new_encrypted_messages": [], "other_updates": [], "chats": [], "users": []}
+    for name, extra in (
+        ("updates.difference", {"state": st}),
+        ("updates.differenceSlice", {"intermediate_state": st}),
+    ):
+        back = s.deserialize(s.serialize(name, {**base, **extra}))
+        assert back["_"] == name and back["new_messages"] == []
+    ch = s.deserialize(
+        s.serialize(
+            "updates.channelDifference",
+            {"final": True, "pts": 9, "new_messages": [], "other_updates": [], "chats": [], "users": []},
+        )
+    )
+    assert ch["pts"] == 9 and ch["final"] is True

@@ -116,8 +116,8 @@ def method_name(body: bytes) -> str:
 
 class TestSchemaRuntime(unittest.TestCase):
     def test_layer_and_ids_match_schema(self) -> None:
-        self.assertGreaterEqual(api_layer(), 200)
-        self.assertEqual(S.funcs["messages.sendMessage"].id, 0x545CD15A)
+        self.assertGreaterEqual(api_layer(), 234)
+        self.assertEqual(S.funcs["messages.sendMessage"].id, 0xFEF48F62)
 
     def test_roundtrip_message_with_flags(self) -> None:
         raw = serialize(
