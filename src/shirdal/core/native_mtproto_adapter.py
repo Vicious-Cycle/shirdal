@@ -15,7 +15,7 @@ import re
 import sqlite3
 import time
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -1150,13 +1150,9 @@ class NativeMTProtoAdapter:
         return None
 
     # ------------------------------------------------------------------ media
-    async def _upload(self, media: str | Path | bytes, progress: Any = None) -> tuple[dict[str, Any], str, str]:
-        data = media if isinstance(media, bytes) else Path(media).read_bytes()
-        name = "upload.bin" if isinstance(media, bytes) else Path(media).name
-        big = len(data) > _BIG_FILE
-
+    def _make_save_part(self) -> Any:
         async def _save_part(file_id: int, part: int, total: int, chunk: bytes, is_big: bool) -> bool:
-            if big:
+            if is_big:
                 await self.call(
                     "upload.saveBigFilePart",
                     file_id=file_id,
@@ -1168,25 +1164,72 @@ class NativeMTProtoAdapter:
                 await self.call("upload.saveFilePart", file_id=file_id, file_part=part, bytes=chunk)
             return True
 
-        up = await self.files.upload_bytes(data, name, _save_part, progress=progress)
-        if big:
-            input_file = {"_": "inputFileBig", "id": up.file_id, "parts": up.parts, "name": name}
-        else:
-            input_file = {
-                "_": "inputFile",
-                "id": up.file_id,
-                "parts": up.parts,
-                "name": name,
-                "md5_checksum": "",
-            }
-        mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
-        return input_file, name, mime
+        return _save_part
 
     @staticmethod
-    def _input_media(input_file: dict[str, Any], name: str, mime: str) -> dict[str, Any]:
+    def _to_input_file(up: Any, name: str) -> dict[str, Any]:
+        if up.is_big:
+            return {"_": "inputFileBig", "id": up.file_id, "parts": up.parts, "name": name}
+        return {
+            "_": "inputFile",
+            "id": up.file_id,
+            "parts": up.parts,
+            "name": name,
+            "md5_checksum": up.md5_checksum or "",
+        }
+
+    async def _upload(self, media: str | Path | bytes, progress: Any = None) -> tuple[dict[str, Any], str, str]:
+        save_part = self._make_save_part()
+        if isinstance(media, bytes):
+            name = "upload.bin"
+            up = await self.files.upload_bytes(media, name, save_part, progress=progress, big_threshold=_BIG_FILE)
+        else:
+            p = Path(media)
+            name = p.name
+            up = await self.files.upload_file(p, save_part, progress=progress, big_threshold=_BIG_FILE)
+        mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        return self._to_input_file(up, name), name, mime
+
+    async def _upload_stream(
+        self,
+        stream: AsyncIterable[bytes],
+        total_size: int,
+        name: str,
+        *,
+        progress: Any = None,
+        mime_type: str | None = None,
+    ) -> tuple[dict[str, Any], str, str]:
+        save_part = self._make_save_part()
+        up = await self.files.upload_stream(
+            stream, total_size, name, save_part, progress=progress, big_threshold=_BIG_FILE
+        )
+        mime = mime_type or mimetypes.guess_type(name)[0] or "application/octet-stream"
+        return self._to_input_file(up, name), name, mime
+
+    @staticmethod
+    def _input_media(
+        input_file: dict[str, Any],
+        name: str,
+        mime: str,
+        *,
+        supports_streaming: bool = True,
+        duration: float = 0.0,
+        width: int = 0,
+        height: int = 0,
+    ) -> dict[str, Any]:
         if mime in ("image/jpeg", "image/png"):
             return {"_": "inputMediaUploadedPhoto", "file": input_file}
         attrs: list[dict[str, Any]] = [{"_": "documentAttributeFilename", "file_name": name}]
+        if mime.startswith("video/"):
+            attrs.append(
+                {
+                    "_": "documentAttributeVideo",
+                    "supports_streaming": supports_streaming,
+                    "duration": float(duration),
+                    "w": int(width),
+                    "h": int(height),
+                }
+            )
         return {
             "_": "inputMediaUploadedDocument",
             "file": input_file,
@@ -1203,6 +1246,10 @@ class NativeMTProtoAdapter:
         reply_to: int | None = None,
         parse_mode: str | None = "html",
         progress: Any = None,
+        supports_streaming: bool = True,
+        duration: float = 0.0,
+        width: int = 0,
+        height: int = 0,
     ) -> MessageEvent:
         peer = await self._input_peer(chat_id)
         input_file, name, mime = await self._upload(media, progress)
@@ -1212,7 +1259,60 @@ class NativeMTProtoAdapter:
             "messages.sendMedia",
             peer=peer,
             reply_to={"_": "inputReplyToMessage", "reply_to_msg_id": reply_to} if reply_to else None,
-            media=self._input_media(input_file, name, mime),
+            media=self._input_media(
+                input_file,
+                name,
+                mime,
+                supports_streaming=supports_streaming,
+                duration=duration,
+                width=width,
+                height=height,
+            ),
+            message=plain,
+            random_id=rid,
+            entities=ents,
+        )
+        await self._absorb(res)
+        mid = self._sent_message_id(res, rid) or 0
+        return self._local_event(chat_id, peer, mid, plain, reply_to)
+
+    async def send_stream(
+        self,
+        chat_id: int | str,
+        stream: AsyncIterable[bytes],
+        total_size: int,
+        *,
+        file_name: str = "video.mp4",
+        mime_type: str | None = None,
+        caption: str | None = None,
+        reply_to: int | None = None,
+        parse_mode: str | None = "html",
+        supports_streaming: bool = True,
+        duration: float = 0.0,
+        width: int = 0,
+        height: int = 0,
+        progress: Any = None,
+    ) -> MessageEvent:
+        """Stream an async byte source directly to Telegram with minimal RAM usage."""
+        peer = await self._input_peer(chat_id)
+        input_file, name, mime = await self._upload_stream(
+            stream, total_size, file_name, progress=progress, mime_type=mime_type
+        )
+        plain, ents = self._text_and_entities(caption or "", parse_mode)
+        rid = random_long()
+        res = await self.call(
+            "messages.sendMedia",
+            peer=peer,
+            reply_to={"_": "inputReplyToMessage", "reply_to_msg_id": reply_to} if reply_to else None,
+            media=self._input_media(
+                input_file,
+                name,
+                mime,
+                supports_streaming=supports_streaming,
+                duration=duration,
+                width=width,
+                height=height,
+            ),
             message=plain,
             random_id=rid,
             entities=ents,
