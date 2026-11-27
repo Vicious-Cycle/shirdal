@@ -172,7 +172,7 @@ class MTProtoSender:
         w.write_uint(PING_ID)
         w.write_long(struct.unpack("<q", os.urandom(8))[0])
         loop = asyncio.get_running_loop()
-        req = _Request(payload=w.to_bytes(), future=loop.create_future(), content_related=False)
+        req = _Request(payload=w.to_bytes(), future=loop.create_future(), content_related=True)
         t0 = time.perf_counter()
         await self._send_request(req)
         try:
@@ -236,7 +236,7 @@ class MTProtoSender:
                 await self._send_request(req)
 
     async def _send_service(self, body: bytes) -> None:
-        _, pkt = self.wire.pack_encrypted(body, content_related=False)
+        _, pkt = self.wire.pack_encrypted(body, content_related=True)
         try:
             await self.transport.send(pkt)
         except (MTProtoTransportError, OSError) as exc:
