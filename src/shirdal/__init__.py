@@ -188,7 +188,7 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
 }
 
 __all__ = list(_LAZY_EXPORTS)
-__version__ = "1.0.18"
+__version__ = "1.0.19"
 
 
 def __getattr__(name: str) -> Any:
