@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
+from shirdal._fs import secure_file
+
 
 class UpdateGapAction(StrEnum):
     APPLIED = "applied"
@@ -49,6 +51,7 @@ class PeerCache:
                 """
             )
             conn.commit()
+        secure_file(self._db_path)
 
     def _load_all(self) -> None:
         assert self._db_path is not None
@@ -72,11 +75,17 @@ class PeerCache:
         norm_type = peer_type.lower()
         clean_user = username.lstrip("@") if username else None
         rec = PeerRecord(norm_type, int(peer_id), int(access_hash), clean_user)
+        old = self._peers.get((norm_type, rec.peer_id))
+        unchanged = (
+            old is not None
+            and old.access_hash == rec.access_hash
+            and (clean_user is None or old.username == clean_user)
+        )
         self._peers[(norm_type, rec.peer_id)] = rec
         if clean_user:
             self._usernames[clean_user.lower()] = (norm_type, rec.peer_id)
 
-        if self._db_path is not None:
+        if self._db_path is not None and not unchanged:
             with sqlite3.connect(self._db_path) as conn:
                 conn.execute(
                     """

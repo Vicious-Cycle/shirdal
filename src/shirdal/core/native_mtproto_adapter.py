@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from shirdal._fs import secure_file
 from shirdal.core.adapter import AdapterError, DeviceProfile, FloodWaitError
 from shirdal.core.events import (
     ChatAction,
@@ -177,6 +178,7 @@ class _AuthStore:
                     user_id INTEGER, is_bot INTEGER,
                     pts INTEGER, qts INTEGER, date INTEGER, seq INTEGER)"""
             )
+        secure_file(path)
 
     def load(self) -> tuple[int, bool, int, int, int, int] | None:
         if self.path is None or not self.path.exists():
@@ -203,6 +205,7 @@ class _AuthStore:
                 pts=excluded.pts, qts=excluded.qts, date=excluded.date, seq=excluded.seq""",
                 (user_id, int(is_bot), st.pts, st.qts, st.date, st.seq),
             )
+        secure_file(self.path)
 
 
 # ======================================================================= adapter
@@ -288,6 +291,7 @@ class NativeMTProtoAdapter:
         self._queue: asyncio.Queue[UpdateEvent | None] = asyncio.Queue()
         self._connected = False
         self._diff_lock = asyncio.Lock()
+        self._diff_rerun = False
         self._chat_info: dict[int, tuple[str, str | None]] = {}
         self._media: OrderedDict[tuple[int, int], dict[str, Any]] = OrderedDict()
         self._dialogs_loaded = False
@@ -532,43 +536,56 @@ class NativeMTProtoAdapter:
             self._spawn(self.sync_updates_state())
 
     async def sync_updates_state(self) -> None:
-        """Recover missed updates via updates.getDifference."""
+        """Recover missed updates via updates.getDifference.
+
+        If a sync is already running, remember that another was requested and run once more
+        when it finishes: a message that hit a pts gap *during* the running sync is not in
+        its result, and would otherwise be dropped until some later update re-triggers a sync.
+        """
         if self._diff_lock.locked():
+            self._diff_rerun = True
             return
         async with self._diff_lock:
-            try:
-                if self.updates.pts == 0:
-                    await self._fetch_state()
-                    return
-                for _ in range(50):
-                    diff = await self.call(
-                        "updates.getDifference",
-                        pts=self.updates.pts,
-                        date=self.updates.date,
-                        qts=self.updates.qts,
-                    )
-                    kind = diff.get("_") if isinstance(diff, dict) else None
-                    if kind == "updates.differenceEmpty":
-                        self.updates.date, self.updates.seq = diff["date"], diff["seq"]
-                        break
-                    if kind == "updates.differenceTooLong":
-                        self.updates.pts = diff["pts"]
-                        break
-                    if kind not in ("updates.difference", "updates.differenceSlice"):
-                        break
-                    self._cache_entities(diff["users"], diff["chats"])
-                    for msg in diff["new_messages"]:
-                        await self._emit_message(msg, EventType.NEW_MESSAGE)
-                    for upd in diff["other_updates"]:
-                        await self._handle_update(upd, check_pts=False)
-                    st = diff["state"] if kind == "updates.difference" else diff["intermediate_state"]
-                    self.updates.pts, self.updates.qts = st["pts"], st["qts"]
-                    self.updates.date, self.updates.seq = st["date"], st["seq"]
-                    if kind == "updates.difference":
-                        break
-                self._save_auth()
-            except Exception as exc:  # noqa: BLE001
-                _LOG.warning("Failed to sync updates state: %s", exc)
+            for _ in range(4):
+                self._diff_rerun = False
+                await self._sync_updates_once()
+                if not self._diff_rerun:
+                    break
+
+    async def _sync_updates_once(self) -> None:
+        try:
+            if self.updates.pts == 0:
+                await self._fetch_state()
+                return
+            for _ in range(50):
+                diff = await self.call(
+                    "updates.getDifference",
+                    pts=self.updates.pts,
+                    date=self.updates.date,
+                    qts=self.updates.qts,
+                )
+                kind = diff.get("_") if isinstance(diff, dict) else None
+                if kind == "updates.differenceEmpty":
+                    self.updates.date, self.updates.seq = diff["date"], diff["seq"]
+                    break
+                if kind == "updates.differenceTooLong":
+                    self.updates.pts = diff["pts"]
+                    break
+                if kind not in ("updates.difference", "updates.differenceSlice"):
+                    break
+                self._cache_entities(diff["users"], diff["chats"])
+                for msg in diff["new_messages"]:
+                    await self._emit_message(msg, EventType.NEW_MESSAGE)
+                for upd in diff["other_updates"]:
+                    await self._handle_update(upd, check_pts=False)
+                st = diff["state"] if kind == "updates.difference" else diff["intermediate_state"]
+                self.updates.pts, self.updates.qts = st["pts"], st["qts"]
+                self.updates.date, self.updates.seq = st["date"], st["seq"]
+                if kind == "updates.difference":
+                    break
+            self._save_auth()
+        except Exception as exc:  # noqa: BLE001
+            _LOG.warning("Failed to sync updates state: %s", exc)
 
     async def _sync_channel(self, channel_id: int) -> None:
         rec = self.peers.get("channel", channel_id)

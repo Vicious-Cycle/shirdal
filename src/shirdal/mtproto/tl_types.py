@@ -6,7 +6,6 @@ import html.parser
 import os
 import struct
 from dataclasses import dataclass, field
-from typing import Any
 
 from shirdal.mtproto.tl_codec import TLReader, TLWriter
 

@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from shirdal._fs import secure_file
 from shirdal.mtproto.crypto import AuthKey, MTProtoCryptoError
 from shirdal.mtproto.tl_codec import GZIP_PACKED_ID, TLReader, TLWriter, unpack_gzip
 
@@ -109,6 +110,7 @@ class MTProtoSessionState:
                 ),
             )
             conn.commit()
+        secure_file(p)
 
     @classmethod
     def load_sqlite(cls, db_path: str | Path) -> MTProtoSessionState | None:

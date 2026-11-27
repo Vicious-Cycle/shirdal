@@ -97,6 +97,7 @@ class MTProtoSender:
         self._recv_task: asyncio.Task[None] | None = None
         self._ping_task: asyncio.Task[None] | None = None
         self._reconnect_lock = asyncio.Lock()
+        self._reconnect_tasks: set[asyncio.Task[None]] = set()
         self._time_synced = False
 
     # ---------------------------------------------------------------- lifecycle
@@ -150,6 +151,11 @@ class MTProtoSender:
                 await asyncio.gather(task, return_exceptions=True)
         self._ping_task = None
         self._recv_task = None
+        for rtask in list(self._reconnect_tasks):
+            if rtask is not current:
+                rtask.cancel()
+                await asyncio.gather(rtask, return_exceptions=True)
+        self._reconnect_tasks.clear()
         for req in self._pending.values():
             if not req.future.done():
                 req.future.set_exception(ConnectionError("Disconnected before RPC completed."))
@@ -182,7 +188,19 @@ class MTProtoSender:
         except (MTProtoTransportError, OSError) as exc:
             _LOG.warning("MTProto send failed (%s); will resend after reconnect.", exc)
             if self.reconnect_enabled and self._running:
-                asyncio.create_task(self._reconnect())
+                self._spawn_reconnect()
+
+    def _spawn_reconnect(self) -> None:
+        """Start a reconnect, keeping a strong ref so the task can't be GC'd mid-flight."""
+        task = asyncio.create_task(self._reconnect())
+        self._reconnect_tasks.add(task)
+
+        def _done(t: asyncio.Task[None]) -> None:
+            self._reconnect_tasks.discard(t)
+            if not t.cancelled() and (exc := t.exception()) is not None:
+                _LOG.error("MTProto reconnect task crashed: %r", exc)
+
+        task.add_done_callback(_done)
 
     async def _resend(self, bad_msg_id: int) -> None:
         req = self._pending.pop(bad_msg_id, None)
@@ -256,7 +274,7 @@ class MTProtoSender:
                     return
                 _LOG.warning("MTProto connection lost: %s", exc)
                 if self.reconnect_enabled:
-                    asyncio.create_task(self._reconnect())
+                    self._spawn_reconnect()
                 else:
                     for req in self._pending.values():
                         if not req.future.done():

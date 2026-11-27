@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from shirdal._fs import secure_file
 from shirdal.engine.fsm import FSMKey
 from shirdal.storage.base import CachedChat
 
@@ -20,6 +21,7 @@ class SQLiteStorage:
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._apply_pragmas()
         self._init_schema()
+        secure_file(self.db_path)
 
         self._fsm_cache: dict[FSMKey, tuple[str | None, dict[str, Any]]] = {}
         self._chat_cache: dict[int, CachedChat] = {}
@@ -94,36 +96,88 @@ class SQLiteStorage:
             )
         self._fsm_cache[key] = (state_val, dict(data_val))
 
+    async def _aload(self, key: FSMKey) -> tuple[str | None, dict[str, Any]]:
+        cached = self._fsm_cache.get(key)
+        if cached is not None:  # L1 hit: no thread hop needed
+            return cached[0], dict(cached[1])
+        return await asyncio.to_thread(self._load_fsm_row, key)
+
     async def get_state(self, key: FSMKey) -> str | None:
         async with self._lock:
-            state_val, _ = self._load_fsm_row(key)
+            state_val, _ = await self._aload(key)
             return state_val
 
     async def set_state(self, key: FSMKey, state: str | None) -> None:
         async with self._lock:
-            _, data_val = self._load_fsm_row(key)
-            self._upsert_fsm_row(key, state, data_val)
+            _, data_val = await self._aload(key)
+            await asyncio.to_thread(self._upsert_fsm_row, key, state, data_val)
 
     async def get_data(self, key: FSMKey) -> dict[str, Any]:
         async with self._lock:
-            _, data_val = self._load_fsm_row(key)
+            _, data_val = await self._aload(key)
             return data_val
 
     async def update_data(self, key: FSMKey, **kwargs: Any) -> dict[str, Any]:
         async with self._lock:
-            state_val, data_val = self._load_fsm_row(key)
+            state_val, data_val = await self._aload(key)
             data_val.update(kwargs)
-            self._upsert_fsm_row(key, state_val, data_val)
+            await asyncio.to_thread(self._upsert_fsm_row, key, state_val, data_val)
             return dict(data_val)
+
+    def _delete_fsm_row(self, key: FSMKey) -> None:
+        with self._conn:
+            self._conn.execute(
+                "DELETE FROM fsm_states WHERE chat_id = ? AND user_id = ?",
+                (key[0], key[1]),
+            )
 
     async def clear(self, key: FSMKey) -> None:
         async with self._lock:
-            with self._conn:
-                self._conn.execute(
-                    "DELETE FROM fsm_states WHERE chat_id = ? AND user_id = ?",
-                    (key[0], key[1]),
-                )
+            await asyncio.to_thread(self._delete_fsm_row, key)
             self._fsm_cache.pop(key, None)
+
+    def _upsert_chat_row(self, params: tuple[Any, ...]) -> None:
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO chat_cache (chat_id, chat_type, title, username, extra, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    chat_type = excluded.chat_type,
+                    title = excluded.title,
+                    username = excluded.username,
+                    extra = excluded.extra,
+                    expires_at = excluded.expires_at
+                """,
+                params,
+            )
+
+    def _select_chat_row(self, chat_id: int, now: float) -> CachedChat | None:
+        cur = self._conn.execute(
+            "SELECT chat_id, chat_type, title, username, extra, expires_at"
+            " FROM chat_cache WHERE chat_id = ?",
+            (chat_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        expires_at = row[5]
+        if expires_at is not None and expires_at <= now:
+            with self._conn:
+                self._conn.execute("DELETE FROM chat_cache WHERE chat_id = ?", (chat_id,))
+            return None
+        return CachedChat(
+            chat_id=row[0],
+            chat_type=row[1],
+            title=row[2],
+            username=row[3],
+            extra=json.loads(row[4]) if row[4] else None,
+            expires_at=expires_at,
+        )
+
+    def _delete_chat_row(self, chat_id: int) -> None:
+        with self._conn:
+            self._conn.execute("DELETE FROM chat_cache WHERE chat_id = ?", (chat_id,))
 
     async def set_chat(
         self,
@@ -146,20 +200,10 @@ class SQLiteStorage:
         )
         extra_json = json.dumps(extra, ensure_ascii=False) if extra is not None else None
         async with self._lock:
-            with self._conn:
-                self._conn.execute(
-                    """
-                    INSERT INTO chat_cache (chat_id, chat_type, title, username, extra, expires_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(chat_id) DO UPDATE SET
-                        chat_type = excluded.chat_type,
-                        title = excluded.title,
-                        username = excluded.username,
-                        extra = excluded.extra,
-                        expires_at = excluded.expires_at
-                    """,
-                    (chat_id, chat_type, title, username, extra_json, expires_at),
-                )
+            await asyncio.to_thread(
+                self._upsert_chat_row,
+                (chat_id, chat_type, title, username, extra_json, expires_at),
+            )
             self._chat_cache[chat_id] = record
         return record
 
@@ -172,36 +216,15 @@ class SQLiteStorage:
                     return cached
                 self._chat_cache.pop(chat_id, None)
 
-            cur = self._conn.execute(
-                "SELECT chat_id, chat_type, title, username, extra, expires_at FROM chat_cache WHERE chat_id = ?",
-                (chat_id,),
-            )
-            row = cur.fetchone()
-            if row is None:
-                return None
-
-            expires_at = row[5]
-            if expires_at is not None and expires_at <= now:
-                with self._conn:
-                    self._conn.execute("DELETE FROM chat_cache WHERE chat_id = ?", (chat_id,))
-                return None
-
-            record = CachedChat(
-                chat_id=row[0],
-                chat_type=row[1],
-                title=row[2],
-                username=row[3],
-                extra=json.loads(row[4]) if row[4] else None,
-                expires_at=expires_at,
-            )
-            self._chat_cache[chat_id] = record
+            record = await asyncio.to_thread(self._select_chat_row, chat_id, now)
+            if record is not None:
+                self._chat_cache[chat_id] = record
             return record
 
     async def invalidate_chat(self, chat_id: int) -> None:
         async with self._lock:
             self._chat_cache.pop(chat_id, None)
-            with self._conn:
-                self._conn.execute("DELETE FROM chat_cache WHERE chat_id = ?", (chat_id,))
+            await asyncio.to_thread(self._delete_chat_row, chat_id)
 
     def close(self) -> None:
         self._conn.close()
