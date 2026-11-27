@@ -84,6 +84,11 @@ class Router:
     ) -> Callable[[ContextHandler], ContextHandler]:
         return self.on(filter_obj, event_type=EventType.CALLBACK_QUERY)
 
+    def on_inline(
+        self, filter_obj: Filter | None = None
+    ) -> Callable[[ContextHandler], ContextHandler]:
+        return self.on(filter_obj, event_type=EventType.INLINE_QUERY)
+
     def on_edit(
         self, filter_obj: Filter | None = None
     ) -> Callable[[ContextHandler], ContextHandler]:

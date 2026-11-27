@@ -11,6 +11,7 @@ class EventType(StrEnum):
     EDIT_MESSAGE = "edit_message"
     DELETE_MESSAGE = "delete_message"
     CALLBACK_QUERY = "callback_query"
+    INLINE_QUERY = "inline_query"
     RAW = "raw"
 
 
@@ -59,6 +60,9 @@ class MessageEvent:
     date: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     callback_id: str | None = None
     callback_data: str | None = None
+    inline_query_id: str | None = None
+    inline_query: str | None = None
+    inline_message_id: str | None = None
     raw: Any = None
 
 

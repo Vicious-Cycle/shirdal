@@ -686,10 +686,32 @@ class BotAPIAdapter:
                 )
             msg.callback_id = str(cb.get("id", ""))
             msg.callback_data = cb.get("data")
+            msg.inline_message_id = cb.get("inline_message_id")
             if msg.callback_data is not None:
                 msg.text = msg.callback_data
             msg.raw = cb
             return UpdateEvent(type=EventType.CALLBACK_QUERY, message=msg, raw=upd)
+        if "inline_query" in upd:
+            iq = upd["inline_query"]
+            from_raw = iq.get("from") or {}
+            uid = int(from_raw.get("id", 0))
+            sender = UserRef(
+                id=uid,
+                username=from_raw.get("username"),
+                first_name=from_raw.get("first_name"),
+                is_self=self.bot_id is not None and uid == self.bot_id,
+            )
+            qtext = str(iq.get("query") or "")
+            msg = MessageEvent(
+                id=0,
+                chat=ChatRef(id=uid, type="private"),
+                sender=sender,
+                text=qtext,
+                inline_query_id=str(iq.get("id", "")),
+                inline_query=qtext,
+                raw=iq,
+            )
+            return UpdateEvent(type=EventType.INLINE_QUERY, message=msg, raw=upd)
         return UpdateEvent(type=EventType.RAW, message=None, raw=upd)
 
     def _normalize_message(self, msg: dict[str, Any]) -> MessageEvent:
@@ -797,11 +819,13 @@ class BotAPIAdapter:
         parse_mode: str | None = "html",
         reply_markup: dict[str, Any] | None = None,
         rich_message: dict[str, Any] | None = None,
+        inline_message_id: str | None = None,
     ) -> MessageEvent:
-        payload: dict[str, Any] = {
-            "chat_id": chat_id,
-            "message_id": message_id,
-        }
+        payload: dict[str, Any] = (
+            {"inline_message_id": inline_message_id}
+            if inline_message_id
+            else {"chat_id": chat_id, "message_id": message_id}
+        )
         if rich_message is not None:
             payload["rich_message"] = rich_message
         else:
@@ -812,7 +836,34 @@ class BotAPIAdapter:
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
         res = await self._call("editMessageText", payload)
-        return self._normalize_message(res)
+        if isinstance(res, dict):
+            return self._normalize_message(res)
+        return MessageEvent(
+            id=int(message_id),
+            chat=ChatRef(id=int(chat_id) if str(chat_id).lstrip("-").isdigit() else 0, type="private"),
+            sender=None,
+            text=text,
+            inline_message_id=inline_message_id,
+        )
+
+    async def answer_inline_query(
+        self,
+        inline_query_id: str,
+        results: list[dict[str, Any]],
+        *,
+        cache_time: int = 0,
+        is_personal: bool = True,
+        next_offset: str = "",
+    ) -> bool:
+        payload: dict[str, Any] = {
+            "inline_query_id": inline_query_id,
+            "results": results,
+            "cache_time": int(cache_time),
+            "is_personal": bool(is_personal),
+        }
+        if next_offset:
+            payload["next_offset"] = next_offset
+        return bool(await self._call("answerInlineQuery", payload))
 
     async def delete_messages(
         self,

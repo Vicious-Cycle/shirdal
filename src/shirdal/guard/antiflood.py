@@ -80,7 +80,16 @@ class AntiFloodAdapter:
                 delay = self.config.per_chat_interval - elapsed
                 self.stats.total_slept_seconds += delay
                 await asyncio.sleep(delay)
-        self._last_chat_call[chat_id] = time.monotonic()
+        now_ts = time.monotonic()
+        self._last_chat_call[chat_id] = now_ts
+        if len(self._last_chat_call) > 2000:
+            cutoff = now_ts - max(60.0, self.config.per_chat_interval * 20)
+            stale = [k for k, ts in self._last_chat_call.items() if ts < cutoff and k != chat_id]
+            for k in stale[:500]:
+                self._last_chat_call.pop(k, None)
+                lk = self._chat_locks.get(k)
+                if lk is not None and not lk.locked():
+                    self._chat_locks.pop(k, None)
 
     async def _execute(
         self,

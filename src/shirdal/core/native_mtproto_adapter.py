@@ -354,8 +354,22 @@ class NativeMTProtoAdapter:
         if self._authorized:
             self._spawn(self._initial_sync())
 
+    async def _ensure_self_id(self) -> int:
+        if self.self_id:
+            return self.self_id
+        res = await self.call("users.getUsers", id=[{"_": "inputUserSelf"}])
+        if isinstance(res, list) and res and isinstance(res[0], dict):
+            u = res[0]
+            self.self_id = int(u.get("id", 0))
+            self.is_bot = bool(u.get("bot", False))
+            self._cache_entities([u], [])
+            self._save_auth()
+        return self.self_id
+
     async def _initial_sync(self) -> None:
         try:
+            if self.self_id == 0:
+                await self._ensure_self_id()
             if self.updates.pts == 0:
                 await self._fetch_state()
             else:
@@ -431,7 +445,24 @@ class NativeMTProtoAdapter:
     async def invoke(self, method: str, **params: Any) -> Any:
         if "tl_payload" in params and isinstance(params["tl_payload"], (bytes, bytearray)):
             return await self.invoke_raw(bytes(params["tl_payload"]))
+        if method == "getMe":
+            res = await self.call("users.getUsers", id=[{"_": "inputUserSelf"}])
+            if isinstance(res, list) and res and isinstance(res[0], dict):
+                u = res[0]
+                if not self.self_id:
+                    self.self_id = int(u.get("id", 0))
+                    self.is_bot = bool(u.get("bot", False))
+                    self._cache_entities([u], [])
+                    self._save_auth()
+                return u
+            return {}
         return await self.call(method, **params)
+
+    async def ping(self) -> float:
+        """Measure raw MTProto round-trip latency in milliseconds."""
+        t0 = time.perf_counter()
+        await self.call("ping", ping_id=random_long())
+        return (time.perf_counter() - t0) * 1000.0
 
     async def invoke_with_layer(self, query: bytes) -> bytes:
         return await self.invoke_raw(self._wrap_init(query))
@@ -1031,16 +1062,90 @@ class NativeMTProtoAdapter:
             return 0
         peer = await self._input_peer(chat_id)
         ids = [int(i) for i in message_ids]
+        deleted = 0
+        for start in range(0, len(ids), 100):
+            chunk = ids[start : start + 100]
+            if peer["_"] == "inputPeerChannel":
+                res = await self.call("channels.deleteMessages", channel=self._as_input_channel(peer), id=chunk)
+                ch = int(peer["channel_id"])
+                if isinstance(res, dict) and "pts" in res:
+                    self._apply_pts(res["pts"], res["pts_count"], ch)
+            else:
+                res = await self.call("messages.deleteMessages", revoke=revoke, id=chunk)
+                if isinstance(res, dict) and "pts" in res:
+                    self._apply_pts(res["pts"], res["pts_count"])
+            deleted += int(res.get("pts_count", len(chunk))) if isinstance(res, dict) else len(chunk)
+        return deleted
+
+    async def get_history_ids(
+        self,
+        chat_id: int | str,
+        *,
+        limit: int = 100,
+        offset_id: int = 0,
+        only_outgoing: bool = False,
+    ) -> list[int]:
+        """Fetch real message IDs from chat history (newest to oldest)."""
+        peer = await self._input_peer(chat_id)
+        collected: list[int] = []
+        cur_offset = int(offset_id)
+        target = max(1, int(limit))
+        while len(collected) < target:
+            batch = min(100, target - len(collected)) if not only_outgoing else 100
+            res = await self.call(
+                "messages.getHistory",
+                peer=peer,
+                offset_id=cur_offset,
+                offset_date=0,
+                add_offset=0,
+                limit=batch,
+                max_id=0,
+                min_id=0,
+                hash=0,
+            )
+            if not isinstance(res, dict):
+                break
+            self._cache_entities(res.get("users", []), res.get("chats", []))
+            msgs = res.get("messages") or []
+            if not msgs:
+                break
+            for m in msgs:
+                if not isinstance(m, dict) or "id" not in m:
+                    continue
+                mid = int(m["id"])
+                cur_offset = mid
+                if only_outgoing and not m.get("out"):
+                    continue
+                collected.append(mid)
+                if len(collected) >= target:
+                    break
+            if len(msgs) < batch:
+                break
+        return collected
+
+    async def get_reply_sender_id(self, chat_id: int | str, reply_to_msg_id: int) -> int | None:
+        """Resolve the sender user/chat ID of a replied-to message."""
+        peer = await self._input_peer(chat_id)
         if peer["_"] == "inputPeerChannel":
-            res = await self.call("channels.deleteMessages", channel=self._as_input_channel(peer), id=ids)
-            ch = int(peer["channel_id"])
-            if isinstance(res, dict) and "pts" in res:
-                self._apply_pts(res["pts"], res["pts_count"], ch)
+            res = await self.call(
+                "channels.getMessages",
+                channel=self._as_input_channel(peer),
+                id=[{"_": "inputMessageID", "id": int(reply_to_msg_id)}],
+            )
         else:
-            res = await self.call("messages.deleteMessages", revoke=revoke, id=ids)
-            if isinstance(res, dict) and "pts" in res:
-                self._apply_pts(res["pts"], res["pts_count"])
-        return int(res.get("pts_count", len(ids))) if isinstance(res, dict) else len(ids)
+            res = await self.call("messages.getMessages", id=[{"_": "inputMessageID", "id": int(reply_to_msg_id)}])
+        if not isinstance(res, dict):
+            return None
+        self._cache_entities(res.get("users", []), res.get("chats", []))
+        for m in res.get("messages") or []:
+            if isinstance(m, dict) and int(m.get("id", 0)) == int(reply_to_msg_id):
+                fp = m.get("from_id")
+                if isinstance(fp, dict):
+                    return marked_id(fp)
+                p = m.get("peer_id")
+                if isinstance(p, dict) and p.get("_") == "peerUser":
+                    return self.self_id if m.get("out") and self.self_id else marked_id(p)
+        return None
 
     # ------------------------------------------------------------------ media
     async def _upload(self, media: str | Path | bytes, progress: Any = None) -> tuple[dict[str, Any], str, str]:

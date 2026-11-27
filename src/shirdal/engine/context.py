@@ -287,6 +287,14 @@ class Context:
     def callback_data(self) -> str | None:
         return self.message.callback_data
 
+    @property
+    def inline_query_id(self) -> str | None:
+        return self.message.inline_query_id
+
+    @property
+    def inline_query(self) -> str | None:
+        return self.message.inline_query
+
     def _spawn(self, coro: Any) -> asyncio.Task[Any]:
         task = asyncio.create_task(coro)
         if self._task_pool is not None:
@@ -362,6 +370,8 @@ class Context:
         kwargs: dict[str, Any] = {"parse_mode": parse_mode}
         if reply_markup is not None:
             kwargs["reply_markup"] = reply_markup
+        if self.message.inline_message_id:
+            kwargs["inline_message_id"] = self.message.inline_message_id
         edited = await self.adapter.edit_message(
             self.chat_id,
             self.message.id,
@@ -536,6 +546,29 @@ class Context:
             stop_flag = True
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+
+    async def answer_inline(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        cache_time: int = 0,
+        is_personal: bool = True,
+        next_offset: str = "",
+    ) -> bool:
+        if not self.inline_query_id:
+            raise RuntimeError("Context.answer_inline() called on a non-inline-query event.")
+        fn = self._resolve_adapter_method("answer_inline_query")
+        if fn is None:
+            raise RuntimeError("Active adapter does not support answer_inline_query.")
+        return bool(
+            await fn(
+                self.inline_query_id,
+                results,
+                cache_time=cache_time,
+                is_personal=is_personal,
+                next_offset=next_offset,
+            )
+        )
 
     async def answer(
         self,
