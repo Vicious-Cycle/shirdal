@@ -11,7 +11,7 @@ pip install shirdal
 Optional extras:
 
 ```bash
-pip install "shirdal[fast]"      # uvloop + msgspec JSON acceleration
+pip install "shirdal[fast]"      # uvloop + msgspec + shircrypt Rust acceleration
 pip install "shirdal[telethon]"  # Telethon MTProto adapter
 pip install "shirdal[hydrogram]" # Hydrogram MTProto adapter
 pip install "shirdal[redis]"     # Redis FSM & cache backend
@@ -39,9 +39,11 @@ shirdal new my_client --adapter telethon
 
 Every `Shirdal` instance wraps a `TransportAdapter`:
 
-- `BotAPIAdapter` — Keep-Alive HTTP/HTTPS client for standard Telegram bots (long polling or built-in `WebhookServer`).
+- `BotAPIAdapter` — Keep-Alive HTTP/HTTPS client for Bot API 10.5 (long polling or built-in `WebhookServer`).
+- `NativeMTProtoAdapter` — Built-in MTProto 2.0 client (Layer 234) for user accounts and bots with `shircrypt` Rust acceleration.
+- `HybridAdapter` — Runs Bot API and `NativeMTProtoAdapter` side by side, automatically routing `> 50 MiB` media uploads through MTProto.
 - `TelethonAdapter` — MTProto client supporting both user accounts (`StringSession`) and `bot_token`.
 - `HydrogramAdapter` — Hydrogram MTProto client with automatic Pyrogram fallback and `bot_token` support.
 - `MockAdapter` — In-memory adapter for deterministic unit tests without network calls.
 
-Handlers receive a `Context` (`ctx`) object with `ctx.reply()`, `ctx.edit()`, `ctx.answer()`, `ctx.state`, `ctx.args`, and `ctx.match`, and can be filtered with `command`, `regex`, `callback`, `state`, `private`, `group`, `incoming`, `outgoing`, `reply`, and `text` using `&`, `|`, and `~`.
+Organize handlers with modular `Router`s, `@router.on_command("start")`, and `await ctx.ask()` conversations. Handlers receive a `Context` (`ctx`) object with `ctx.reply()`, `ctx.edit()`, `ctx.answer()`, `ctx.state`, `ctx.args`, and `ctx.match`, and can be filtered with the magic filter `F` (`F.text.startswith(...)`) or classic combinators (`command`, `regex`, `callback`, `state`, `private`, `group`, `incoming`, `outgoing`, `reply`, `text`) using `&`, `|`, and `~`.

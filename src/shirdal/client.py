@@ -230,7 +230,11 @@ class Shirdal:
             from importlib.metadata import version
             return version("shirdal")
         except Exception:
-            return "unknown"
+            try:
+                from shirdal import __version__
+                return __version__
+            except Exception:
+                return "unknown"
 
     async def _log_startup_info(
         self, connect_ms: float | None = None, *, _progressive: bool = False

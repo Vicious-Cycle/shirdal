@@ -1,16 +1,16 @@
 # Native MTProto 2.0 Core
 
-Shirdal includes a modular, 5-layer native MTProto 2.0 core (`shirdal.mtproto`) wired into `NativeMTProtoAdapter`. Every layer is independently testable and decoupled from high-level bot logic.
+Shirdal includes a modular, 5-layer native MTProto 2.0 core (`shirdal.mtproto`, **Layer 234**) wired into `NativeMTProtoAdapter`. Every layer is independently testable and decoupled from high-level bot logic.
 
 ## Layer Overview
 
 | Layer | Module | Responsibility |
 | :--- | :--- | :--- |
-| 1. Binary & Schema | `tl_codec.py`, `tl_schema.py` | Zero-copy `TLReader`/`TLWriter`, `gzip_packed`, `.tl` parser, `@dataclass(slots=True)` codegen |
-| 2. Crypto & Handshake | `crypto.py`, `auth.py` | `AES-256-IGE`, MTProto 2.0 KDF, `AuthKey`, Pollard's rho, 3-step DH `HandshakeSession` |
-| 3. Transport & Framing | `transport.py`, `session.py` | `TCPAbridgedTransport`, `MTProtoSessionState` (SQLite), `MTProtoWire`, `msg_container`, `bad_server_salt` |
-| 4. State & Transfers | `updates.py`, `files.py` | `PeerCache` (`access_hash`), `UpdateStateTracker` (`pts`/`qts`/`seq`), parallel `FileTransferManager` |
-| 5. Adapter Integration | `native_mtproto_adapter.py` | `NativeMTProtoAdapter` implementing `TransportAdapter` + `FLOOD_WAIT` mapping |
+| 1. Binary & Schema | `tl_codec.py`, `tl_schema.py`, `tl_runtime.py` | Zero-copy `TLReader`/`TLWriter`, `.tl` parser, Layer 234 `api.tl` runtime serializer |
+| 2. Crypto & Handshake | `crypto.py`, `auth.py`, `srp.py`, `rsa_keys.py` | `AES-256-IGE` (with `shircrypt` acceleration), MTProto 2.0 KDF, 3-step DH, 2FA SRP, bundled Telegram RSA keys |
+| 3. Transport & Framing | `transport.py`, `session.py`, `sender.py` | `TCPAbridgedTransport` (`TCP_NODELAY`), SQLite `MTProtoSessionState`, keepalive, acks, auto-reconnect & resend |
+| 4. State & Transfers | `updates.py`, `files.py` | `PeerCache` (`access_hash` + full dialog paging), `UpdateStateTracker` (`pts`/`qts`/`seq`), parallel `FileTransferManager` |
+| 5. Adapter Integration | `native_mtproto_adapter.py` | `NativeMTProtoAdapter` implementing `TransportAdapter`, DC migration, raw `invoke()`, and `FloodWaitError` |
 
 ## Using `NativeMTProtoAdapter`
 
@@ -32,6 +32,12 @@ bot = Shirdal(adapter, anti_flood=True)
 async def ping(ctx: Context) -> None:
     await ctx.edit("Pong!")
 ```
+
+## Raw TL Calls, DC Migration & FloodWait
+
+- **Raw TL Calls:** Call any Layer 234 method directly via `await adapter.invoke("messages.getHistory", peer=..., limit=20)` without manual constructor IDs.
+- **Automatic DC Migration & 2FA:** `PHONE_MIGRATE_X`, `USER_MIGRATE_X`, `NETWORK_MIGRATE_X`, and `FILE_MIGRATE_X` are handled transparently, along with 2FA SRP (`auth.checkPassword`).
+- **Rate Limits:** Telegram `FLOOD_WAIT_X` errors raise `FloodWaitError`, exposing both `.seconds` and `.retry_after`.
 
 ## Generating TL Models from `.tl` Files
 
