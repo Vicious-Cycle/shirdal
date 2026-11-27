@@ -236,7 +236,7 @@ class MTProtoSender:
                 await self._send_request(req)
 
     async def _send_service(self, body: bytes) -> None:
-        _, pkt = self.wire.pack_encrypted(body, content_related=True)
+        _, pkt = self.wire.pack_encrypted(body, content_related=False)
         try:
             await self.transport.send(pkt)
         except (MTProtoTransportError, OSError) as exc:
