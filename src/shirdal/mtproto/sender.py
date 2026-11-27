@@ -11,6 +11,7 @@ import asyncio
 import logging
 import os
 import struct
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
@@ -31,6 +32,7 @@ from shirdal.mtproto.transport import MTProtoTransportError, TCPAbridgedTranspor
 
 _LOG = logging.getLogger("shirdal.mtproto")
 
+PING_ID = 0x7ABE77EC
 PONG_ID = 0x347773C5
 NEW_SESSION_CREATED_ID = 0x9EC20908
 PING_DELAY_DISCONNECT_ID = 0xF3427B8C
@@ -163,6 +165,22 @@ class MTProtoSender:
         await self.transport.close()
 
     # ------------------------------------------------------------------ sending
+    async def ping(self, *, timeout: float = 10.0) -> float:
+        if not self._running:
+            raise ConnectionError("MTProto sender is not connected.")
+        w = TLWriter()
+        w.write_uint(PING_ID)
+        w.write_long(struct.unpack("<q", os.urandom(8))[0])
+        loop = asyncio.get_running_loop()
+        req = _Request(payload=w.to_bytes(), future=loop.create_future(), content_related=False)
+        t0 = time.perf_counter()
+        await self._send_request(req)
+        try:
+            await asyncio.wait_for(asyncio.shield(req.future), timeout=timeout)
+            return (time.perf_counter() - t0) * 1000.0
+        finally:
+            self._pending.pop(req.msg_id, None)
+
     async def invoke(self, payload: bytes, *, timeout: float = 20.0) -> bytes:
         if not self._running:
             raise ConnectionError("MTProto sender is not connected.")
@@ -357,7 +375,9 @@ class MTProtoSender:
             r = TLReader(body)
             r.read_uint()
             ping_msg_id = r.read_long()
-            self._pending.pop(ping_msg_id, None)
+            req = self._pending.pop(ping_msg_id, None)
+            if req is not None and not req.future.done():
+                req.future.set_result(body)
             return
 
         if cid in (MSG_DETAILED_INFO_ID, MSG_NEW_DETAILED_INFO_ID):

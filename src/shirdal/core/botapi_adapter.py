@@ -835,7 +835,13 @@ class BotAPIAdapter:
                 payload["parse_mode"] = pm
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
-        res = await self._call("editMessageText", payload)
+        try:
+            res = await self._call("editMessageText", payload)
+        except AdapterError as exc:
+            if "message is not modified" in str(exc).lower():
+                res = True
+            else:
+                raise
         if isinstance(res, dict):
             return self._normalize_message(res)
         return MessageEvent(

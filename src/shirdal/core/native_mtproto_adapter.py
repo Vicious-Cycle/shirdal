@@ -461,7 +461,7 @@ class NativeMTProtoAdapter:
     async def ping(self) -> float:
         """Measure raw MTProto round-trip latency in milliseconds."""
         t0 = time.perf_counter()
-        await self.call("help.getNearestDc")
+        await self.call("ping", ping_id=random_long())
         return (time.perf_counter() - t0) * 1000.0
 
     async def invoke_with_layer(self, query: bytes) -> bytes:
@@ -799,7 +799,7 @@ class NativeMTProtoAdapter:
             text=msg.get("message") or "",
             media=media_ref,
             reply_to_id=reply_to.get("reply_to_msg_id"),
-            is_outgoing=out,
+            is_outgoing=out or (self.self_id != 0 and chat_id == self.self_id and sender_id == self.self_id),
             date=datetime.fromtimestamp(int(msg.get("date") or time.time()), tz=UTC),
             raw=msg,
         )

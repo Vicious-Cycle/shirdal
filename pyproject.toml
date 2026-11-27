@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "shirdal"
-version = "1.0.19"
+version = "1.0.20"
 description = "A fast, transport-agnostic, context-first Python framework for Telegram Bot API 10.5 and native MTProto 2.0."
 readme = "README.md"
 requires-python = ">=3.11"
