@@ -1085,6 +1085,7 @@ class NativeMTProtoAdapter:
     ) -> list[int]:
         """Fetch real message IDs from chat history (newest to oldest)."""
         peer = await self._input_peer(chat_id)
+        expected_cid = self._marked_from_input(peer)
         collected: list[int] = []
         cur_offset = int(offset_id)
         target = max(1, int(limit))
@@ -1112,6 +1113,9 @@ class NativeMTProtoAdapter:
                     continue
                 mid = int(m["id"])
                 cur_offset = mid
+                mp = m.get("peer_id")
+                if isinstance(mp, dict) and marked_id(mp) != expected_cid:
+                    continue
                 if only_outgoing and not m.get("out"):
                     continue
                 collected.append(mid)
