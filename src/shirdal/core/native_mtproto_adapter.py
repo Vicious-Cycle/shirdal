@@ -368,12 +368,12 @@ class NativeMTProtoAdapter:
 
     async def _initial_sync(self) -> None:
         try:
-            if self.self_id == 0:
-                await self._ensure_self_id()
             if self.updates.pts == 0:
                 await self._fetch_state()
             else:
                 await self.sync_updates_state()
+            if self.self_id == 0 and self.session_path is not None:
+                await self._ensure_self_id()
         except Exception as exc:  # noqa: BLE001
             _LOG.warning("Initial updates sync failed: %s", exc)
 
