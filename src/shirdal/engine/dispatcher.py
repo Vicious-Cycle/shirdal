@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from shirdal.core.adapter import TransportAdapter
-from shirdal.core.events import EventType, UpdateEvent
+from shirdal.core.events import ChatRef, EventType, MessageEvent, UpdateEvent
 from shirdal.engine.context import Context
 from shirdal.engine.filters import Filter
 from shirdal.engine.fsm import FSMStorage, FSMStrategy, MemoryStorage
@@ -173,17 +173,23 @@ class Dispatcher:
         return False
 
     async def dispatch(self, update: UpdateEvent, adapter: TransportAdapter) -> None:
-        if update.message is None:
+        routes = list(self._routes_by_type.get(update.type, ()))
+        if not routes and update.type != EventType.NEW_MESSAGE:
             return
+        msg = update.message
+        if msg is None:
+            if not routes:
+                return
+            msg = MessageEvent(id=0, chat=ChatRef(id=0, type="private"), sender=None, raw=update.raw)
 
         if await self._try_resolve_waiter(update, adapter):
             return
 
         ctx: Context | None = None
-        for route in list(self._routes_by_type.get(update.type, ())):
+        for route in routes:
             if ctx is None:
                 ctx = Context(
-                    update.message,
+                    msg,
                     adapter,
                     task_pool=self._task_pool,
                     storage=self.storage,

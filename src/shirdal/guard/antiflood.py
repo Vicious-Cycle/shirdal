@@ -147,11 +147,12 @@ class AntiFloodAdapter:
         *,
         reply_to: int | None = None,
         parse_mode: str | None = "html",
+        **kwargs: Any,
     ) -> MessageEvent:
         return await self._execute(
             chat_id,
             lambda: self.inner.send_message(
-                chat_id, text, reply_to=reply_to, parse_mode=parse_mode
+                chat_id, text, reply_to=reply_to, parse_mode=parse_mode, **kwargs
             ),
         )
 
@@ -162,11 +163,12 @@ class AntiFloodAdapter:
         text: str,
         *,
         parse_mode: str | None = "html",
+        **kwargs: Any,
     ) -> MessageEvent:
         return await self._execute(
             chat_id,
             lambda: self.inner.edit_message(
-                chat_id, message_id, text, parse_mode=parse_mode
+                chat_id, message_id, text, parse_mode=parse_mode, **kwargs
             ),
         )
 

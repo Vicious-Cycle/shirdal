@@ -415,7 +415,7 @@ class BotAPIAdapter:
 
         self._poll_timeout = max(1, int(poll_timeout))
         self._allowed_updates = list(
-            allowed_updates or ("message", "edited_message", "channel_post", "edited_channel_post", "callback_query")
+            allowed_updates or ("message", "edited_message", "channel_post", "edited_channel_post", "callback_query", "inline_query")
         )
         self._pool_size = max(1, int(pool_size))
         self._ssl_ctx = ssl.create_default_context() if self._scheme == "https" else None
@@ -550,6 +550,18 @@ class BotAPIAdapter:
             )
         chunks.append(b"--" + b + b"--\r\n")
         return b"".join(chunks)
+
+    async def call(
+        self,
+        method: str,
+        payload: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Public Bot API method call (accepts a payload dict or keyword arguments)."""
+        data = dict(payload) if payload is not None else {}
+        if kwargs:
+            data.update(kwargs)
+        return await self._call(method, data or None)
 
     async def _call(
         self,

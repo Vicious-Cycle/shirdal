@@ -276,7 +276,7 @@ class NativeMTProtoAdapter:
 
         self.self_id = 0
         self.is_bot = False
-        self._authorized = False
+        self._authorized = bool(self.state.auth_key is not None and not auto_login)
         saved = self._store.load()
         if saved is not None:
             self.self_id, self.is_bot, pts, qts, date, seq = saved
@@ -517,7 +517,11 @@ class NativeMTProtoAdapter:
 
     # ----------------------------------------------------------------- updates
     async def _fetch_state(self) -> None:
-        st = await self.call("updates.getState")
+        try:
+            raw_st = await self.invoke_with_layer(self.schema.serialize("updates.getState"))
+            st = self._decode(raw_st, "updates.State")
+        except Exception:  # noqa: BLE001
+            st = await self.call("updates.getState")
         if isinstance(st, dict):
             self.updates.pts, self.updates.qts = st["pts"], st["qts"]
             self.updates.date, self.updates.seq = st["date"], st["seq"]
